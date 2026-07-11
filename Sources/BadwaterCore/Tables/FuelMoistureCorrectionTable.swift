@@ -16,9 +16,12 @@ import Foundation
 /// - **Shaded rows (4)** = aspect only (slope not a factor), `N, E, S, W`.
 ///
 /// > Note: In every table the Shaded section's `0800-0959 / L` cell is printed
-/// > with an asterisk (`5*`). No footnote for the asterisk appears on the table
-/// > pages of the IRPG; the numeric value (5) is used and the asterisk is
-/// > recorded in ``asteriskCells`` for faithful display.
+/// > with an asterisk. The asterisk marks the cell regardless of its value — the
+/// > value itself varies (e.g. Table B is `5*, 4*, 4*, 5*` down the N/E/S/W rows;
+/// > Tables C and D are uniformly `5*`). No footnote for the asterisk appears on
+/// > the table pages of the IRPG, so the printed numeric value is used as-is and
+/// > the asterisk is exposed via ``hasAsterisk(shading:row:column:)`` for
+/// > faithful display.
 public enum FuelMoistureCorrectionTable {
 
     public static let timeBands: [String] = [

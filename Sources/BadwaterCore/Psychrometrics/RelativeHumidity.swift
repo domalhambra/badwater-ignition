@@ -16,12 +16,13 @@ public struct HumidityResult: Sendable, Equatable, Codable {
 /// temperatures and site elevation — the NWCG belt-weather-kit / sling
 /// psychrometer method (PMS 437).
 ///
-/// This is a physically-based implementation of the WMO sling-psychrometer
-/// relationship parameterized by the band's station pressure, chosen over
-/// transcribing the multi-thousand-cell printed booklets. It reproduces the
-/// printed tables to within normal rounding; the golden tests in
-/// `PsychrometricsTests` pin it to reference cells, and any values used
-/// operationally should still be spot-checked against the printed tables.
+/// This is a physically-based implementation of the sling-psychrometer
+/// relationship (Ferrel coefficient — the standard form for the whirled/sling
+/// psychrometer used in belt weather kits) parameterized by the band's station
+/// pressure, chosen over transcribing the multi-thousand-cell printed booklets.
+/// It reproduces the printed tables to within normal rounding; the tests in
+/// `PsychrometricsTests` pin its behavior, and any values used operationally
+/// should still be spot-checked against the printed tables.
 public enum Psychrometrics {
 
     /// Inches of mercury → hectopascals.
@@ -51,8 +52,8 @@ public enum Psychrometrics {
         let esDry = saturationVaporPressure(celsius: tDryC)
         let esWet = saturationVaporPressure(celsius: tWetC)
 
-        // WMO sling-psychrometer equation (psychrometer constant 6.60e-4 /°C,
-        // with the standard wet-bulb temperature correction term).
+        // Sling-psychrometer equation with the Ferrel psychrometer constant
+        // (6.60e-4 /°C) and the standard wet-bulb temperature correction term.
         let psychrometerConstant = 0.000660 * (1.0 + 0.00115 * tWetC)
         var vaporPressure = esWet - psychrometerConstant * pressureHPa * (tDryC - tWetC)
         if vaporPressure < 0.01 { vaporPressure = 0.01 }   // keep dew point finite

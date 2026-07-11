@@ -30,8 +30,11 @@ final class HumidityModel {
         Psychrometrics.compute(dryBulbF: dryBulbF, wetBulbF: wetBulbF, band: band)
     }
 
-    /// Elevation label for the current band, respecting the Alaska toggle.
-    var bandLabel: String { alaska ? band.alaskaLabel : band.conusLabel }
+    /// Elevation label for a band, respecting the Alaska toggle. Used by the
+    /// band picker to label each option.
+    func label(for band: ElevationBand) -> String {
+        alaska ? band.alaskaLabel : band.conusLabel
+    }
 
     private func clampWet() { if wetBulbF > dryBulbF { wetBulbF = dryBulbF } }
 

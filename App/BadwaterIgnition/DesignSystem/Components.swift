@@ -105,7 +105,6 @@ struct ChipPicker<Option: Hashable>: View {
 struct ResultCard: View {
     let title: String
     let pig: Int
-    let ffm: Int
     let severity: Color
     let subtitle: String
 
@@ -122,8 +121,11 @@ struct ResultCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: Metric.resultRadius))
         .overlay(alignment: .leading) {
-            Rectangle().fill(severity).frame(width: 4)
-                .clipShape(.rect(topLeadingRadius: Metric.resultRadius, bottomLeadingRadius: Metric.resultRadius))
+            UnevenRoundedRectangle(
+                topLeadingRadius: Metric.resultRadius,
+                bottomLeadingRadius: Metric.resultRadius)
+                .fill(severity)
+                .frame(width: 4)
         }
         .overlay(RoundedRectangle(cornerRadius: Metric.resultRadius).strokeBorder(BadwaterColor.hairline))
     }

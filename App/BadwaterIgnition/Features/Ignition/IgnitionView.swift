@@ -91,10 +91,10 @@ struct IgnitionView: View {
         let e = model.estimate
         return HStack(spacing: 10) {
             ResultCard(title: "Unshaded", pig: e.unshaded.probabilityOfIgnition,
-                       ffm: e.unshaded.fineFuelMoisture, severity: e.unshaded.interpretation.color,
+                       severity: e.unshaded.interpretation.color,
                        subtitle: "FFM \(e.unshaded.fineFuelMoisture)% · <50% shade")
             ResultCard(title: "Shaded", pig: e.shaded.probabilityOfIgnition,
-                       ffm: e.shaded.fineFuelMoisture, severity: e.shaded.interpretation.color,
+                       severity: e.shaded.interpretation.color,
                        subtitle: "FFM \(e.shaded.fineFuelMoisture)% · ≥50% shade")
         }
     }

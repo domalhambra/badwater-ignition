@@ -32,7 +32,6 @@ enum Metric {
     static let cardSpacing: CGFloat = 12
     static let cardRadius: CGFloat = 16
     static let resultRadius: CGFloat = 18
-    static let chipRadius: CGFloat = 999
     /// Minimum interactive target — sized generously for gloved hands.
     static let tapTarget: CGFloat = 48
 }

@@ -22,7 +22,6 @@ final class IgnitionModel {
     var elevationDelta: ElevationDelta { didSet { persist() } }
 
     private let store: UserDefaults
-    private var loading = false
 
     init(store: UserDefaults = .standard, now: Date = Date(), calendar: Calendar = .current) {
         self.store = store
@@ -51,7 +50,7 @@ final class IgnitionModel {
     func applyHumidity(_ rh: Int) { relativeHumidity = min(max(rh, 0), 100) }
 
     private func persist() {
-        guard !loading else { return }
+        // didSet does not fire during init, so this only runs on user edits.
         store.set(dryBulbF, forKey: Keys.dryBulb)
         store.set(relativeHumidity, forKey: Keys.rh)
         store.set(aspect.rawValue, forKey: Keys.aspect)

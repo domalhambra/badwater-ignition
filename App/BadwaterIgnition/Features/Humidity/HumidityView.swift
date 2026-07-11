@@ -61,11 +61,7 @@ struct HumidityView: View {
     private var elevationPicker: some View {
         ChipPicker(title: "Elevation band  ·  \(Int(model.band.stationPressureInHg)) inHg",
                    options: ElevationBand.allCases, selection: $model.band,
-                   label: { alaskaAwareLabel($0) })
-    }
-
-    private func alaskaAwareLabel(_ band: ElevationBand) -> String {
-        model.alaska ? band.alaskaLabel : band.conusLabel
+                   label: model.label(for:))
     }
 
     private var alaskaToggle: some View {

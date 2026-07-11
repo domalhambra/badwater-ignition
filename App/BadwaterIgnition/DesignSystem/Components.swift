@@ -29,6 +29,22 @@ struct TemperatureStepperCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
         .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
+        // One VoiceOver element; swipe up/down adjusts by a degree.
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(label)
+        .accessibilityLabel(label)
+        .accessibilityValue(accessibleValue)
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: step(1)
+            case .decrement: step(-1)
+            @unknown default: break
+            }
+        }
+    }
+
+    private var accessibleValue: String {
+        "\(unit.fromFahrenheit(valueF)) degrees \(unit == .celsius ? "Celsius" : "Fahrenheit")"
     }
 
     /// Step by one degree in the *display* unit, then clamp in °F.
@@ -75,6 +91,17 @@ struct StepperCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
         .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(label)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(value) \(unit)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: adjust(step)
+            case .decrement: adjust(-step)
+            @unknown default: break
+            }
+        }
     }
 
     private func adjust(_ delta: Int) {
@@ -111,6 +138,10 @@ struct StatCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
         .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(label)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(value) \(unit)")
     }
 }
 
@@ -144,10 +175,14 @@ struct ChipPicker<Option: Hashable>: View {
                                 .foregroundStyle(selected ? BadwaterColor.accent : BadwaterColor.muted)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier(label(option))
+                        .accessibilityAddTraits(selected ? [.isSelected] : [])
                     }
                 }
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
     }
 }
 
@@ -178,5 +213,9 @@ struct ResultCard: View {
                 .frame(width: 4)
         }
         .overlay(RoundedRectangle(cornerRadius: Metric.resultRadius).strokeBorder(BadwaterColor.hairline))
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("result-\(title)")
+        .accessibilityLabel("\(title) probability of ignition")
+        .accessibilityValue("\(pig) percent. \(subtitle)")
     }
 }

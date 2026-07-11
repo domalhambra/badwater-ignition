@@ -64,6 +64,10 @@ struct HumidityView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("rh-readout")
+        .accessibilityLabel("Relative humidity")
+        .accessibilityValue("\(model.result.relativeHumidity) percent")
     }
 
     private var elevationPicker: some View {
@@ -93,6 +97,7 @@ struct HumidityView: View {
                 .foregroundStyle(.white)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("use-in-ignition")
     }
 
     private var disclaimer: some View {

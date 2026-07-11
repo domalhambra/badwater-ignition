@@ -43,3 +43,42 @@ targets:
         # Developer supplies their own signing team.
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
+
+  BadwaterIgnitionTests:
+    type: bundle.unit-test
+    supportedDestinations: [iOS]
+    sources:
+      - path: App/BadwaterIgnitionTests
+    dependencies:
+      - target: BadwaterIgnition
+      - package: BadwaterCore
+        product: BadwaterCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.unittests
+        GENERATE_INFOPLIST_FILE: YES
+
+  BadwaterIgnitionUITests:
+    type: bundle.ui-testing
+    supportedDestinations: [iOS]
+    sources:
+      - path: App/BadwaterIgnitionUITests
+    dependencies:
+      - target: BadwaterIgnition
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  BadwaterIgnition:
+    build:
+      targets:
+        BadwaterIgnition: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - BadwaterIgnitionTests
+        - BadwaterIgnitionUITests

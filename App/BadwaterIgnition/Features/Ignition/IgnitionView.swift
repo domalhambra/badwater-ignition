@@ -74,6 +74,8 @@ struct IgnitionView: View {
         .frame(maxWidth: .infinity)
         .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BadwaterColor.hairline))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("calc-chain")
     }
 
     private func chainNode(_ label: String, _ value: String) -> some View {
@@ -118,6 +120,8 @@ struct IgnitionView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BadwaterColor.hairline))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("interpretation")
     }
 
     private var disclaimer: some View {

@@ -37,12 +37,17 @@ Sources/BadwaterCore/
 Tests/BadwaterCoreTests/          golden cells, banding boundaries, property tests, worked examples
 
 App/BadwaterIgnition/             SwiftUI app (iOS + macOS)
-  DesignSystem/                   Badwater color/type tokens + components
+  DesignSystem/                   Badwater color/type tokens + components (VoiceOver-ready)
   Features/Ignition, Features/Humidity
   Assets.xcassets/Colors          light/dark palette (generated)
-project.yml                       XcodeGen spec (app target)
+  PrivacyInfo.xcprivacy           privacy manifest (no data collected)
+App/BadwaterIgnitionTests/        view-model unit tests (run in Xcode)
+App/BadwaterIgnitionUITests/      black-box UI smoke tests (run in Xcode)
+project.yml                       XcodeGen spec (app + test targets, test scheme)
 DESIGN.md                         design system — finalize in Claude Design
 docs/DATA_PROVENANCE.md           how every table value was transcribed & verified
+docs/APP_STORE.md                 draft App Store listing copy
+ATTRIBUTION.md                    NWCG public-domain sourcing + disclaimer
 ```
 
 All correctness-critical logic lives in **`BadwaterCore`**, which has no UI and no

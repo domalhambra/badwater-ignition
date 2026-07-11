@@ -14,11 +14,13 @@ struct IgnitionView: View {
 
                 // Fast inputs
                 HStack(spacing: 10) {
-                    StepperCard(label: "Dry bulb", unit: "°F",
-                                value: $model.dryBulbF, range: 10...130)
+                    TemperatureStepperCard(label: "Dry bulb", valueF: $model.dryBulbF,
+                                           rangeF: 10...130, unit: model.temperatureUnit)
                     StepperCard(label: "Rel. humidity", unit: "%",
                                 value: $model.relativeHumidity, range: 0...100)
                 }
+                ChipPicker(title: "Units", options: TemperatureUnit.allCases,
+                           selection: $model.temperatureUnit, label: \.symbol)
 
                 // Site factors
                 monthPicker

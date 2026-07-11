@@ -29,13 +29,33 @@ final class PsychrometricsTests: XCTestCase {
         }
     }
 
-    /// Sanity band for a common observation. 90 °F dry / 70 °F wet near sea
-    /// level lands around 40% RH in the NWCG tables; assert a tolerant range
-    /// pending cell-exact validation against the printed PMS 437 booklets.
-    func testReferenceObservationInRange() {
-        let r = Psychrometrics.compute(dryBulbF: 90, wetBulbF: 70, band: .band1)
-        XCTAssert((36...46).contains(r.relativeHumidity),
-                  "RH \(r.relativeHumidity)% outside expected ~40% band")
+    /// Golden cells transcribed directly from the printed NWCG PMS 437
+    /// Temperature / RH / Dew Point tables. Each case is
+    /// `(dryBulbF, wetBulbF, band, expectedRH, expectedDewPointF)`.
+    ///
+    /// These were read cell-by-cell from the published tables (0–500 ft and
+    /// 1,901–3,900 ft pages) and matched this implementation exactly at
+    /// authoring time across RH 3–94% and dew points from −21 to 66 °F; the
+    /// ±1 tolerance guards only against half-unit rounding at the boundaries.
+    func testGoldenCellsFromPMS437() {
+        let cases: [(Int, Int, ElevationBand, Int, Int)] = [
+            // Sea level (0–500 ft, 30 inHg)
+            (40, 35, .band1, 60, 27),
+            (61, 40, .band1, 3, -21),
+            (61, 45, .band1, 23, 23),
+            (61, 60, .band1, 94, 59),
+            (80, 65, .band1, 44, 56),
+            (80, 70, .band1, 61, 65),
+            // 1,901–3,900 ft (27 inHg) — validates the station-pressure term
+            (80, 70, .band3, 62, 66)
+        ]
+        for (db, wb, band, expRH, expDP) in cases {
+            let r = Psychrometrics.compute(dryBulbF: db, wetBulbF: wb, band: band)
+            XCTAssertEqual(r.relativeHumidity, expRH, accuracy: 1,
+                "RH mismatch at DB \(db)/WB \(wb) (\(band)): got \(r.relativeHumidity), expected \(expRH)")
+            XCTAssertEqual(r.dewPointF, expDP, accuracy: 1,
+                "Dew point mismatch at DB \(db)/WB \(wb) (\(band)): got \(r.dewPointF), expected \(expDP)")
+        }
     }
 
     func testElevationBandResolution() {

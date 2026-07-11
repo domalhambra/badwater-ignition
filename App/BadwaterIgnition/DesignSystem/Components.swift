@@ -1,4 +1,54 @@
 import SwiftUI
+import BadwaterCore
+
+/// A temperature stepper that binds to a canonical °F value but displays and
+/// steps in the selected ``TemperatureUnit``. The underlying value stays in °F
+/// (the IRPG's native unit) so table lookups are never lossy.
+struct TemperatureStepperCard: View {
+    let label: String
+    /// Canonical value in °F.
+    @Binding var valueF: Int
+    /// Allowed range in °F.
+    var rangeF: ClosedRange<Int>
+    let unit: TemperatureUnit
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label).fieldLabel()
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text("\(unit.fromFahrenheit(valueF))")
+                    .font(BadwaterFont.inputValue).foregroundStyle(BadwaterColor.ink)
+                Text(unit.symbol).font(BadwaterFont.body).foregroundStyle(BadwaterColor.muted)
+            }
+            HStack(spacing: 8) {
+                stepButton("minus") { step(-1) }
+                stepButton("plus") { step(1) }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
+        .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
+    }
+
+    /// Step by one degree in the *display* unit, then clamp in °F.
+    private func step(_ delta: Int) {
+        let displayed = unit.fromFahrenheit(valueF) + delta
+        let f = unit.toFahrenheit(displayed)
+        valueF = min(max(f, rangeF.lowerBound), rangeF.upperBound)
+    }
+
+    private func stepButton(_ systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 17, weight: .semibold))
+                .frame(maxWidth: .infinity, minHeight: Metric.tapTarget)
+                .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 10))
+                .foregroundStyle(BadwaterColor.ink)
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 /// A large stepper input card: mono label, big tabular value, and −/+ buttons
 /// sized for gloved hands. Tapping the value also allows direct entry.

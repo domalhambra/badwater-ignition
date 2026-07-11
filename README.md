@@ -22,6 +22,8 @@ for cell.
 - **Humidity:** Dry-bulb + wet-bulb + elevation band → **relative humidity and
   dew point** (NWCG psychrometric method, with Alaska thresholds). One tap sends
   the result into the Ignition calculator.
+- **°F / °C:** both calculators accept and display either unit; °F stays
+  canonical internally (the IRPG's native unit) so table lookups are never lossy.
 
 ## Architecture
 
@@ -76,6 +78,8 @@ The transcription was independently re-read by multiple agents and reconciled
 cell-by-cell, and is guarded by property tests (monotonicity, bounds, decade
 values). See [`docs/DATA_PROVENANCE.md`](docs/DATA_PROVENANCE.md).
 
-Relative humidity uses the WMO sling-psychrometer relationship parameterized by
-the band's station pressure; it reproduces the printed PMS 437 tables to within
-rounding and is pinned by tests.
+Relative humidity uses the sling-psychrometer relationship parameterized by the
+band's station pressure. It was **validated cell-by-cell against the printed
+PMS 437 tables** and matched exactly at every point checked (RH 3–94%, dry bulb
+40–80 °F, dew points −21 to 66 °F, at 30 inHg and 27 inHg); those cells are
+locked in as golden tests.

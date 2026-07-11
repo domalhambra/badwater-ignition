@@ -17,13 +17,21 @@ struct HumidityView: View {
                 bigResult
 
                 HStack(spacing: 10) {
-                    StepperCard(label: "Dry bulb", unit: "°F", value: $model.dryBulbF, range: 10...130)
-                    StepperCard(label: "Wet bulb", unit: "°F", value: $model.wetBulbF, range: 10...130)
+                    TemperatureStepperCard(label: "Dry bulb", valueF: $model.dryBulbF,
+                                           rangeF: 10...130, unit: model.temperatureUnit)
+                    TemperatureStepperCard(label: "Wet bulb", valueF: $model.wetBulbF,
+                                           rangeF: 10...130, unit: model.temperatureUnit)
                 }
+                ChipPicker(title: "Units", options: TemperatureUnit.allCases,
+                           selection: $model.temperatureUnit, label: \.symbol)
 
                 HStack(spacing: 10) {
-                    StatCard(label: "Dew point", value: "\(model.result.dewPointF)", unit: "°F")
-                    StatCard(label: "WB depression", value: "\(model.result.wetBulbDepressionF)", unit: "°F")
+                    StatCard(label: "Dew point",
+                             value: "\(model.temperatureUnit.fromFahrenheit(model.result.dewPointF))",
+                             unit: model.temperatureUnit.symbol)
+                    StatCard(label: "WB depression",
+                             value: "\(model.temperatureUnit.differenceFromFahrenheit(model.result.wetBulbDepressionF))",
+                             unit: model.temperatureUnit.symbol)
                 }
 
                 elevationPicker

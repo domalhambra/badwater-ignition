@@ -14,6 +14,7 @@ final class HumidityModel {
     var wetBulbF: Int { didSet { persist() } }
     var band: ElevationBand { didSet { persist() } }
     var alaska: Bool { didSet { persist() } }
+    var temperatureUnit: TemperatureUnit { didSet { persist() } }
 
     private let store: UserDefaults
     init(store: UserDefaults = .standard) {
@@ -22,6 +23,7 @@ final class HumidityModel {
         wetBulbF = store.object(forKey: Keys.wet) as? Int ?? 60
         band = ElevationBand(rawValue: store.object(forKey: Keys.band) as? Int ?? 3) ?? .band3
         alaska = store.bool(forKey: Keys.alaska)
+        temperatureUnit = TemperatureUnit(rawValue: store.string(forKey: Keys.unit) ?? "") ?? .fahrenheit
         clampWet()
     }
 
@@ -43,6 +45,7 @@ final class HumidityModel {
         store.set(wetBulbF, forKey: Keys.wet)
         store.set(band.rawValue, forKey: Keys.band)
         store.set(alaska, forKey: Keys.alaska)
+        store.set(temperatureUnit.rawValue, forKey: Keys.unit)
     }
 
     private enum Keys {
@@ -50,5 +53,6 @@ final class HumidityModel {
         static let wet = "humidity.wetBulbF"
         static let band = "humidity.band"
         static let alaska = "humidity.alaska"
+        static let unit = "humidity.tempUnit"
     }
 }

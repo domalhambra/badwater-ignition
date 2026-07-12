@@ -3,8 +3,8 @@ import BadwaterCore
 @testable import BadwaterIgnition
 
 /// Unit tests for the view-model layer. These run in the simulator (the models
-/// use the Observation framework), and exercise the real persistence and
-/// hand-off logic rather than the UI.
+/// use the Observation framework), and exercise the real persistence, wet-bulb
+/// RH derivation, and hand-off logic rather than the UI.
 final class IgnitionModelTests: XCTestCase {
 
     private func freshStore(_ name: String = #function) -> UserDefaults {
@@ -59,6 +59,58 @@ final class IgnitionModelTests: XCTestCase {
         XCTAssertTrue(m.estimate.isNight)
         XCTAssertNil(m.estimate.unshaded.correction)
         XCTAssertEqual(m.estimate.unshaded.fineFuelMoisture, m.estimate.referenceFuelMoisture + 5)
+    }
+
+    func testDirectSourceUsesTypedHumidity() {
+        let m = IgnitionModel(store: freshStore())
+        m.rhSource = .direct
+        m.relativeHumidity = 22
+        m.wetBulbF = 40   // must be ignored in direct mode
+        XCTAssertEqual(m.effectiveRelativeHumidity, 22)
+    }
+
+    func testWetBulbSourceDerivesHumidity() {
+        let m = IgnitionModel(store: freshStore())
+        m.rhSource = .wetBulb
+        m.dryBulbF = 80
+        m.wetBulbF = 65
+        m.elevationBand = .band1
+        m.relativeHumidity = 5   // stale direct value must be ignored
+        let expected = Psychrometrics.compute(dryBulbF: 80, wetBulbF: 65, band: .band1).relativeHumidity
+        XCTAssertEqual(m.effectiveRelativeHumidity, expected)
+        XCTAssertEqual(expected, 44, accuracy: 1)   // PMS 437 sea-level golden cell
+        // The PIG estimate consumes the derived RH, not the typed one.
+        XCTAssertEqual(m.estimate.input.relativeHumidity, expected)
+    }
+
+    func testWetBulbClampedToDryBulb() {
+        let m = IgnitionModel(store: freshStore())
+        m.rhSource = .wetBulb
+        m.dryBulbF = 70
+        m.wetBulbF = 65
+        m.dryBulbF = 60   // lowering dry bulb pulls the wet bulb down with it
+        XCTAssertLessThanOrEqual(m.wetBulbF, 60)
+    }
+
+    func testApplyHumiditySwitchesToDirect() {
+        let m = IgnitionModel(store: freshStore())
+        m.rhSource = .wetBulb
+        m.applyHumidity(37)
+        XCTAssertEqual(m.rhSource, .direct)
+        XCTAssertEqual(m.relativeHumidity, 37)
+        XCTAssertEqual(m.effectiveRelativeHumidity, 37)
+    }
+
+    func testHumiditySourceAndWetBulbPersist() {
+        let store = freshStore()
+        let a = IgnitionModel(store: store)
+        a.rhSource = .wetBulb
+        a.wetBulbF = 58
+        a.elevationBand = .band4
+        let b = IgnitionModel(store: store)
+        XCTAssertEqual(b.rhSource, .wetBulb)
+        XCTAssertEqual(b.wetBulbF, 58)
+        XCTAssertEqual(b.elevationBand, .band4)
     }
 }
 

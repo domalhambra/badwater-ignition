@@ -65,13 +65,16 @@ public enum RadioScript {
             || previous.estimate.input.aspect != current.estimate.input.aspect
     }
 
-    /// `"Taken near {loc} at an elevation of {10,300} feet, on a Western aspect."`
-    /// The location phrase is spoken verbatim; nil parts drop out gracefully.
+    /// `"Taken {loc} at an elevation of {10,300} feet, on a Western aspect."` —
+    /// the location phrase carries its own preposition (e.g. "near the 659 road",
+    /// "at the lookout") and is spoken verbatim after "Taken"; nil parts drop out
+    /// gracefully. The app never injects a preposition, so the operator phrases
+    /// the location exactly as they want it read on the net.
     static func locationSentence(spokenLocation: String?, obs: WeatherObs) -> String {
         var s = "Taken"
         var hasDetail = false
         if let loc = spokenLocation?.trimmingCharacters(in: .whitespaces), !loc.isEmpty {
-            s += " near \(loc)"
+            s += " \(loc)"
             hasDetail = true
         }
         if let feet = obs.elevationFeet {

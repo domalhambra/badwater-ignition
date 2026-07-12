@@ -48,7 +48,7 @@ final class RadioScriptTests: XCTestCase {
 
         let script = RadioScript.render(
             addressee: "Diamond Mountain", timeLabel: "0900",
-            spokenLocation: "the 659 road", current: current, previous: previous)
+            spokenLocation: "near the 659 road", current: current, previous: previous)
         XCTAssertEqual(script,
             "Diamond Mountain, stand by for your 0900 Weather observations. "
             + "Taken near the 659 road at an elevation of 10,300 feet, on a Western aspect. "
@@ -63,7 +63,7 @@ final class RadioScriptTests: XCTestCase {
         let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
         let script = RadioScript.render(
             addressee: "Diamond Mountain", timeLabel: "0800",
-            spokenLocation: "the 659 road", current: current, previous: nil)
+            spokenLocation: "near the 659 road", current: current, previous: nil)
         XCTAssertTrue(script.contains("Taken near the 659 road"))
         XCTAssertTrue(script.contains("Dry Bulb 60 degrees, RH 25%."))
         XCTAssertFalse(script.contains(", up"))
@@ -78,7 +78,7 @@ final class RadioScriptTests: XCTestCase {
         let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
         let script = RadioScript.render(
             addressee: "Diamond Mountain", timeLabel: "1000",
-            spokenLocation: "the 659 road", current: current, previous: previous)
+            spokenLocation: "near the 659 road", current: current, previous: previous)
         XCTAssertFalse(script.contains("Taken"))
         XCTAssertTrue(script.contains("Weather observations. Dry Bulb 60 degrees"))
     }
@@ -101,7 +101,7 @@ final class RadioScriptTests: XCTestCase {
 
         // Elevation → nil counts as changed; sentence degrades to loc + aspect.
         let lost = obs(dry: 60, rh: 25, elevationFeet: nil)
-        let lostScript = RadioScript.render(addressee: "", timeLabel: "1000", spokenLocation: "the 659 road",
+        let lostScript = RadioScript.render(addressee: "", timeLabel: "1000", spokenLocation: "near the 659 road",
                                             current: lost, previous: base)
         XCTAssertTrue(lostScript.contains("Taken near the 659 road, on a Western aspect."))
         XCTAssertFalse(lostScript.contains("elevation"))
@@ -164,10 +164,13 @@ final class RadioScriptTests: XCTestCase {
 
     func testLocationSentenceNilMatrix() {
         let both = obs(dry: 60, rh: 25, elevationFeet: 10300)
-        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "the 659 road", obs: both),
+        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "near the 659 road", obs: both),
                        "Taken near the 659 road at an elevation of 10,300 feet, on a Western aspect.")
-        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "the 659 road", obs: obs(dry: 60, rh: 25)),
+        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "near the 659 road", obs: obs(dry: 60, rh: 25)),
                        "Taken near the 659 road, on a Western aspect.")
+        // Verbatim: a different preposition is inserted exactly as typed (no "near").
+        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "at the 659 junction", obs: both),
+                       "Taken at the 659 junction at an elevation of 10,300 feet, on a Western aspect.")
         XCTAssertEqual(RadioScript.locationSentence(spokenLocation: nil, obs: both),
                        "Taken at an elevation of 10,300 feet, on a Western aspect.")
         XCTAssertEqual(RadioScript.locationSentence(spokenLocation: nil, obs: obs(dry: 60, rh: 25)),

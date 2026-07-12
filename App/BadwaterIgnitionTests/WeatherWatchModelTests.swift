@@ -53,6 +53,22 @@ final class WeatherWatchModelTests: XCTestCase {
         XCTAssertTrue(w.shift.obs.isEmpty)
     }
 
+    func testRemoveObsDeletesAndPersists() {
+        let store = fresh("watch.remove")
+        let w = WeatherWatchModel(ignition: ignition(dry: 90, rh: 8), store: store)
+        let a = w.logObs()
+        let b = w.logObs()
+        XCTAssertEqual(w.shift.obs.count, 2)
+
+        w.removeObs(id: a.id)                       // drop the mis-entry
+        XCTAssertEqual(w.shift.obs.map(\.id), [b.id])
+
+        // Delete persisted: a fresh model on the same store sees only the survivor.
+        let reloaded = WeatherWatchModel(ignition: ignition(dry: 90, rh: 8), store: store)
+        XCTAssertEqual(reloaded.shift.obs.count, 1)
+        XCTAssertEqual(reloaded.shift.obs.first?.id, b.id)
+    }
+
     func testAddresseePersistsAcrossInstances() {
         let store = fresh("watch.addressee")
         let ign = ignition(dry: 80, rh: 15)

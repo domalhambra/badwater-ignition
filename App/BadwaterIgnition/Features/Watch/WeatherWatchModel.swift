@@ -82,6 +82,11 @@ final class WeatherWatchModel {
 
     func startNewShift(at now: Date = Date()) { shift = Shift(started: now) }
 
+    /// Delete a mis-entered observation. Trigger crossings re-derive from the
+    /// remaining obs on the next read, so removing a bad log can't leave a
+    /// latched flag behind; the shift re-persists via `didSet`.
+    func removeObs(id: UUID) { shift.obs.removeAll { $0.id == id } }
+
     /// Set the IMET export header (division / location name), sticky per shift.
     func setShiftHeader(division: String?, locationName: String?) {
         shift.division = division

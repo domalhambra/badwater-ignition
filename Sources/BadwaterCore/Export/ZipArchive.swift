@@ -1,0 +1,66 @@
+import Foundation
+
+/// A minimal **STORE-only** (uncompressed, method 0) ZIP writer — just enough to
+/// package an XLSX (OOXML) workbook with no third-party dependency and no
+/// Compression framework (keeping the core Linux-testable). Deterministic: a
+/// fixed DOS timestamp means identical input yields byte-identical output.
+///
+/// STORE triples the size of a compressible payload, which is irrelevant for a
+/// few kilobytes of spreadsheet XML shared over the OS share sheet; do not reuse
+/// this for large binary parts.
+public enum ZipArchive {
+
+    /// Package entries (path → bytes) into a ZIP container.
+    public static func zip(_ entries: [(path: String, data: Data)]) -> Data {
+        var out = Data()
+        var central = Data()
+        let dosTime: UInt16 = 0x0000
+        let dosDate: UInt16 = 0x0021   // 1980-01-01, fixed for determinism
+
+        func put(_ d: inout Data, _ bytes: [UInt8]) { d.append(contentsOf: bytes) }
+
+        for entry in entries {
+            let name = Array(entry.path.utf8)
+            let bytes = [UInt8](entry.data)
+            let crc = CRC32.checksum(bytes)
+            let size = UInt32(bytes.count)
+            let offset = UInt32(out.count)
+
+            // Local file header
+            put(&out, le32(0x0403_4b50))
+            put(&out, le16(20)); put(&out, le16(0)); put(&out, le16(0))   // version, flags, method(store)
+            put(&out, le16(dosTime)); put(&out, le16(dosDate))
+            put(&out, le32(crc)); put(&out, le32(size)); put(&out, le32(size))
+            put(&out, le16(UInt16(name.count))); put(&out, le16(0))       // name len, extra len
+            put(&out, name)
+            put(&out, bytes)
+
+            // Central directory header
+            put(&central, le32(0x0201_4b50))
+            put(&central, le16(20)); put(&central, le16(20))              // version made by / needed
+            put(&central, le16(0)); put(&central, le16(0))                // flags, method(store)
+            put(&central, le16(dosTime)); put(&central, le16(dosDate))
+            put(&central, le32(crc)); put(&central, le32(size)); put(&central, le32(size))
+            put(&central, le16(UInt16(name.count)))
+            put(&central, le16(0)); put(&central, le16(0)); put(&central, le16(0)); put(&central, le16(0)) // extra, comment, disk, int attr
+            put(&central, le32(0)); put(&central, le32(offset))           // ext attr, local header offset
+            put(&central, name)
+        }
+
+        let cdOffset = UInt32(out.count)
+        let cdSize = UInt32(central.count)
+        out.append(central)
+
+        // End of central directory
+        put(&out, le32(0x0605_4b50))
+        put(&out, le16(0)); put(&out, le16(0))
+        put(&out, le16(UInt16(entries.count))); put(&out, le16(UInt16(entries.count)))
+        put(&out, le32(cdSize)); put(&out, le32(cdOffset)); put(&out, le16(0))
+        return out
+    }
+
+    private static func le16(_ v: UInt16) -> [UInt8] { [UInt8(v & 0xFF), UInt8(v >> 8)] }
+    private static func le32(_ v: UInt32) -> [UInt8] {
+        [UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF), UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)]
+    }
+}

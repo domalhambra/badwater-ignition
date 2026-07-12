@@ -22,8 +22,9 @@ for cell.
 - **Humidity:** Dry-bulb + wet-bulb + elevation band → **relative humidity and
   dew point** (NWCG psychrometric method, with Alaska thresholds). One tap sends
   the result into the Ignition calculator.
-- **°F / °C:** both calculators accept and display either unit; °F stays
-  canonical internally (the IRPG's native unit) so table lookups are never lossy.
+
+Temperatures are in **°F** throughout — the IRPG's native unit, and the standard
+for U.S. wildland fire.
 
 ## Architecture
 

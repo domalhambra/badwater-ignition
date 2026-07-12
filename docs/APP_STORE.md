@@ -29,7 +29,7 @@ plain-language fire-behavior interpretation.
 - Relative-humidity calculator from dry-bulb and wet-bulb temperatures across
   all NWCG elevation bands (with Alaska thresholds); one tap sends the result
   into the ignition calculator.
-- °F or °C. Big, gloved-hand controls; a true-black night mode to protect dark
+- Big, gloved-hand controls; a true-black night mode to protect dark
   adaptation on the line.
 - 100% offline. No account, no tracking, no data collected.
 

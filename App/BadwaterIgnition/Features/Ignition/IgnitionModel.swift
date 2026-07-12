@@ -20,7 +20,6 @@ final class IgnitionModel {
     var aspect: Aspect { didSet { persist() } }
     var slope: Slope { didSet { persist() } }
     var elevationDelta: ElevationDelta { didSet { persist() } }
-    var temperatureUnit: TemperatureUnit { didSet { persist() } }
 
     private let store: UserDefaults
 
@@ -37,7 +36,6 @@ final class IgnitionModel {
         aspect = Aspect(rawValue: store.string(forKey: Keys.aspect) ?? "") ?? .south
         slope = Slope(rawValue: store.string(forKey: Keys.slope) ?? "") ?? .gentle
         elevationDelta = ElevationDelta(rawValue: store.string(forKey: Keys.elevation) ?? "") ?? .level
-        temperatureUnit = TemperatureUnit(rawValue: store.string(forKey: Keys.unit) ?? "") ?? .fahrenheit
     }
 
     /// The live estimate for the current inputs (both shaded and unshaded).
@@ -58,7 +56,6 @@ final class IgnitionModel {
         store.set(aspect.rawValue, forKey: Keys.aspect)
         store.set(slope.rawValue, forKey: Keys.slope)
         store.set(elevationDelta.rawValue, forKey: Keys.elevation)
-        store.set(temperatureUnit.rawValue, forKey: Keys.unit)
     }
 
     private enum Keys {
@@ -67,7 +64,6 @@ final class IgnitionModel {
         static let aspect = "ignition.aspect"
         static let slope = "ignition.slope"
         static let elevation = "ignition.elevationDelta"
-        static let unit = "ignition.tempUnit"
     }
 }
 

@@ -17,6 +17,10 @@ final class WeatherWatchModel {
     /// The crew's briefed trigger points. Empty until the crew adds their own —
     /// the app never authors a threshold.
     var triggers: [BriefedTrigger] { didSet { persistTriggers() } }
+    /// Radio addressee for the broadcast script (e.g. "Diamond Mountain").
+    /// Deliberately stored app-wide, not per-shift: the radio net usually
+    /// outlives a shift, so it survives `startNewShift()`.
+    var addressee: String { didSet { persistAddressee() } }
 
     private let ignition: IgnitionModel
     private let store: UserDefaults
@@ -26,6 +30,7 @@ final class WeatherWatchModel {
         self.store = store
         self.shift = Self.decode(Shift.self, from: store.data(forKey: Keys.shift)) ?? Shift(started: now)
         self.triggers = Self.decode([BriefedTrigger].self, from: store.data(forKey: Keys.triggers)) ?? []
+        self.addressee = store.string(forKey: Keys.addressee) ?? ""
     }
 
     /// The observation a LOG tap would freeze right now: the live estimate, with
@@ -117,6 +122,24 @@ final class WeatherWatchModel {
         return "\(c.month ?? 0)/\(c.day ?? 0)/\((c.year ?? 0) % 100)"
     }
 
+    /// The spoken radio broadcast for an observation. `previous` is the obs
+    /// logged immediately before it in the shift (drives the "up 5 / down 3"
+    /// deltas and the location-suppression rule); an obs not yet in the shift
+    /// (a pending preview) compares against the latest logged one.
+    func broadcastScript(for obs: WeatherObs, calendar: Calendar = .current,
+                         forceLocation: Bool = false) -> String {
+        let previous: WeatherObs?
+        if let i = shift.obs.firstIndex(where: { $0.id == obs.id }) {
+            previous = i > 0 ? shift.obs[i - 1] : nil
+        } else {
+            previous = shift.obs.last
+        }
+        return RadioScript.render(
+            addressee: addressee, timeLabel: obs.timeLabel(calendar),
+            spokenLocation: shift.locationName, current: obs, previous: previous,
+            forceLocation: forceLocation)
+    }
+
     func addTrigger(_ trigger: BriefedTrigger) { triggers.append(trigger) }
     func removeTrigger(id: UUID) { triggers.removeAll { $0.id == id } }
     func updateTrigger(_ trigger: BriefedTrigger) {
@@ -127,6 +150,7 @@ final class WeatherWatchModel {
 
     private func persistShift() { store.set(try? JSONEncoder().encode(shift), forKey: Keys.shift) }
     private func persistTriggers() { store.set(try? JSONEncoder().encode(triggers), forKey: Keys.triggers) }
+    private func persistAddressee() { store.set(addressee, forKey: Keys.addressee) }
 
     private static func decode<T: Decodable>(_ type: T.Type, from data: Data?) -> T? {
         guard let data else { return nil }
@@ -136,6 +160,7 @@ final class WeatherWatchModel {
     private enum Keys {
         static let shift = "watch.shift"
         static let triggers = "watch.triggers"
+        static let addressee = "watch.addressee"
     }
 }
 

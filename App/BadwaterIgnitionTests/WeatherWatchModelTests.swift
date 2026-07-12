@@ -52,4 +52,31 @@ final class WeatherWatchModelTests: XCTestCase {
         w.startNewShift()
         XCTAssertTrue(w.shift.obs.isEmpty)
     }
+
+    func testAddresseePersistsAcrossInstances() {
+        let store = fresh("watch.addressee")
+        let ign = ignition(dry: 80, rh: 15)
+        let a = WeatherWatchModel(ignition: ign, store: store)
+        a.addressee = "Diamond Mountain"
+        let b = WeatherWatchModel(ignition: ign, store: store)
+        XCTAssertEqual(b.addressee, "Diamond Mountain")
+    }
+
+    func testBroadcastScriptResolvesPreviousObs() {
+        let ign = ignition(dry: 80, rh: 15)
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.script"))
+        w.addressee = "Diamond Mountain"
+
+        let first = w.logObs()
+        let firstScript = w.broadcastScript(for: first)
+        XCTAssertTrue(firstScript.hasPrefix("Diamond Mountain, stand by for your"))
+        XCTAssertFalse(firstScript.contains(", up"))       // no deltas on the first obs
+
+        ign.dryBulbF = 85
+        ign.relativeHumidity = 12
+        let second = w.logObs()
+        let script = w.broadcastScript(for: second)
+        XCTAssertTrue(script.contains("Dry Bulb 85 degrees, up 5"))
+        XCTAssertTrue(script.contains("RH 12%, down 3"))
+    }
 }

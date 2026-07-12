@@ -50,10 +50,16 @@ final class WeatherWatchModel {
             crossedTriggerIDs: TriggerEvaluator.metTriggerIDs(triggers, by: base))
     }
 
-    /// Freeze the current reading and append it to the shift.
+    /// Freeze the current reading and append it to the shift. Observed metadata
+    /// for the IMET export (wind, absolute elevation, GPS) is captured by the app
+    /// and folded into the frozen obs here.
     @discardableResult
-    func logObs(at now: Date = Date(), calendar: Calendar = .current) -> WeatherObs {
-        let obs = pendingObs(at: now, calendar: calendar)
+    func logObs(at now: Date = Date(), calendar: Calendar = .current,
+                wind: Wind? = nil, elevationFeet: Int? = nil, location: GeoPoint? = nil) -> WeatherObs {
+        var obs = pendingObs(at: now, calendar: calendar)
+        obs.wind = wind
+        obs.elevationFeet = elevationFeet
+        obs.location = location
         shift.obs.append(obs)
         return obs
     }
@@ -70,6 +76,47 @@ final class WeatherWatchModel {
     var crossedCount: Int { crossings.filter(\.isCrossed).count }
 
     func startNewShift(at now: Date = Date()) { shift = Shift(started: now) }
+
+    /// Set the IMET export header (division / location name), sticky per shift.
+    func setShiftHeader(division: String?, locationName: String?) {
+        shift.division = division
+        shift.locationName = locationName
+    }
+
+    /// The IMET `.xlsx` workbook bytes for the current shift (one sheet per local
+    /// day) — hand this to the OS share sheet.
+    func imetWorkbookData(calendar: Calendar = .current) -> Data {
+        IMETWorkbook.build(from: shift, calendar: calendar)
+    }
+
+    /// A plain-text NWS spot-request "recent observations" block for the shift.
+    func spotObservationsText(includePoI: Bool = true, calendar: Calendar = .current) -> String {
+        let header = SpotObsHeader(
+            site: [shift.division, shift.locationName].compactMap { $0 }.joined(separator: " "),
+            latLong: latest?.location?.rendered,
+            elevationFeet: latest?.elevationFeet,
+            aspect: latest?.estimate.input.aspect.displayName,
+            dateLabel: dateLabel(shift.started, calendar))
+        let rows = shift.obs.sorted { $0.timestamp < $1.timestamp }.map { o -> SpotObsLine in
+            let dry = o.estimate.input.dryBulbF
+            let md = calendar.dateComponents([.month, .day], from: o.timestamp)
+            return SpotObsLine(
+                timeHHmm: o.timeLabel(calendar), dryBulbF: dry,
+                wetBulbF: o.humidity.map { dry - $0.wetBulbDepressionF },
+                relativeHumidity: o.estimate.input.relativeHumidity,
+                dewPointF: o.humidity?.dewPointF, windText: o.wind?.spotString,
+                poiUnshaded: o.estimate.unshaded.probabilityOfIgnition,
+                poiShaded: o.estimate.shaded.probabilityOfIgnition,
+                monthDay: "\(md.month ?? 0)/\(md.day ?? 0)")
+        }
+        return SpotObservationsRenderer.plainText(header: header, rows: rows, includePoI: includePoI)
+    }
+
+    private func dateLabel(_ date: Date, _ calendar: Calendar) -> String {
+        let c = calendar.dateComponents([.month, .day, .year], from: date)
+        return "\(c.month ?? 0)/\(c.day ?? 0)/\((c.year ?? 0) % 100)"
+    }
+
     func addTrigger(_ trigger: BriefedTrigger) { triggers.append(trigger) }
     func removeTrigger(id: UUID) { triggers.removeAll { $0.id == id } }
     func updateTrigger(_ trigger: BriefedTrigger) {

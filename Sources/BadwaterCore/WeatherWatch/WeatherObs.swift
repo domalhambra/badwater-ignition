@@ -20,6 +20,16 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
     public let crossedTriggerIDs: [UUID]
     public var note: String?
 
+    // Observed metadata for the IMET export (not computed by the app). All
+    // optional — pre-feature persisted observations decode unchanged.
+    /// Observed wind (IMET column E). `nil` = not recorded.
+    public var wind: Wind?
+    /// Absolute site elevation in feet (IMET column H). This is NOT the
+    /// `elevationDelta` used for RH — it's the observation site's real elevation.
+    public var elevationFeet: Int?
+    /// GPS location of the observation (IMET column J).
+    public var location: GeoPoint?
+
     public init(
         id: UUID = UUID(),
         timestamp: Date,
@@ -27,7 +37,10 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
         humidity: HumidityResult? = nil,
         rhSource: RHSource,
         crossedTriggerIDs: [UUID] = [],
-        note: String? = nil
+        note: String? = nil,
+        wind: Wind? = nil,
+        elevationFeet: Int? = nil,
+        location: GeoPoint? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -36,6 +49,9 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
         self.rhSource = rhSource
         self.crossedTriggerIDs = crossedTriggerIDs
         self.note = note
+        self.wind = wind
+        self.elevationFeet = elevationFeet
+        self.location = location
     }
 
     /// The value of a metric for this observation, or `nil` when it isn't
@@ -72,11 +88,23 @@ public struct Shift: Identifiable, Equatable, Codable, Sendable {
     public let id: UUID
     public var started: Date
     public var obs: [WeatherObs]
+    /// Division / branch label for the IMET export title & tab (e.g. `"Division W"`).
+    public var division: String?
+    /// Location / road name for the IMET export title (e.g. `"659 Road"`).
+    public var locationName: String?
 
-    public init(id: UUID = UUID(), started: Date, obs: [WeatherObs] = []) {
+    public init(
+        id: UUID = UUID(),
+        started: Date,
+        obs: [WeatherObs] = [],
+        division: String? = nil,
+        locationName: String? = nil
+    ) {
         self.id = id
         self.started = started
         self.obs = obs
+        self.division = division
+        self.locationName = locationName
     }
 
     /// The most recent observation.

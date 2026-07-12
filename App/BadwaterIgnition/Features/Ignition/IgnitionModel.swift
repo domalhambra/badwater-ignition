@@ -2,26 +2,8 @@ import Foundation
 import Observation
 import BadwaterCore
 
-/// Where the Ignition screen's relative humidity comes from.
-///
-/// A Kestrel (or other electronic meter) reads RH directly; a sling
-/// psychrometer / belt weather kit reads a wet-bulb temperature from which RH is
-/// derived (dry bulb + wet bulb + elevation band). Both feed the same PIG chain.
-enum RHSource: String, CaseIterable, Identifiable, Hashable {
-    /// RH is typed in directly (e.g. read off a Kestrel).
-    case direct
-    /// RH is derived from a wet-bulb temperature (slinging weather).
-    case wetBulb
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .direct: return "Direct"
-        case .wetBulb: return "From wet bulb"
-        }
-    }
-}
+// `RHSource` (direct / wetBulb) now lives in BadwaterCore so logged observations
+// can record how their humidity was measured.
 
 /// View model for the Ignition (PIG / FFM) screen.
 ///

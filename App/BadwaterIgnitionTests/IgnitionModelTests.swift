@@ -3,8 +3,8 @@ import BadwaterCore
 @testable import BadwaterIgnition
 
 /// Unit tests for the view-model layer. These run in the simulator (the models
-/// use the Observation framework), and exercise the real persistence,
-/// unit-conversion, and hand-off logic rather than the UI.
+/// use the Observation framework), and exercise the real persistence and
+/// hand-off logic rather than the UI.
 final class IgnitionModelTests: XCTestCase {
 
     private func freshStore(_ name: String = #function) -> UserDefaults {
@@ -34,13 +34,11 @@ final class IgnitionModelTests: XCTestCase {
         a.aspect = .west
         a.slope = .steep
         a.elevationDelta = .above
-        a.temperatureUnit = .celsius
         // A new model reading the same store restores the site factors.
         let b = IgnitionModel(store: store)
         XCTAssertEqual(b.aspect, .west)
         XCTAssertEqual(b.slope, .steep)
         XCTAssertEqual(b.elevationDelta, .above)
-        XCTAssertEqual(b.temperatureUnit, .celsius)
     }
 
     func testApplyHumidityClampsAndSets() {

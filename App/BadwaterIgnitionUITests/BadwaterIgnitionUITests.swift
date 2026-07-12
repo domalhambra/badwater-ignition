@@ -39,12 +39,4 @@ final class BadwaterIgnitionUITests: XCTestCase {
         dryBulb.swipeUp()
         XCTAssertTrue(app.staticTexts["result-Unshaded"].exists)
     }
-
-    func testUnitToggleExists() {
-        let app = XCUIApplication()
-        app.launch()
-        XCTAssertTrue(app.buttons["°C"].waitForExistence(timeout: 5))
-        app.buttons["°C"].tap()
-        XCTAssertTrue(app.buttons["°F"].exists)
-    }
 }

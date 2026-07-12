@@ -53,7 +53,7 @@ final class RadioScriptTests: XCTestCase {
             "Diamond Mountain, stand by for your 0900 Weather observations. "
             + "Taken near the 659 road at an elevation of 10,300 feet, on a Western aspect. "
             + "Dry Bulb 60 degrees, up 5, RH 25%, down 3. "
-            + "Winds are 1-3 miles from the West, Probability of Ignition Unshaded is 50%, Shaded is 30%. "
+            + "Winds are 1-3 miles per hour from the West, Probability of Ignition Unshaded is 50%, Shaded is 30%. "
             + "I repeat, Dry Bulb 60 degrees, up 5, RH 25%, down 3. How copy?")
     }
 
@@ -130,13 +130,13 @@ final class RadioScriptTests: XCTestCase {
     // MARK: - (f) Wind variants
 
     func testWindSpokenPhrases() {
-        XCTAssertEqual(Wind.measured(.init(low: 1, high: 3), .west).spokenPhrase, "1-3 miles from the West")
-        XCTAssertEqual(Wind.measured(.init(8), .southwest).spokenPhrase, "8 miles from the Southwest")
-        XCTAssertEqual(Wind.measured(.init(1), .north).spokenPhrase, "1 mile from the North")
-        XCTAssertEqual(Wind(speed: .init(low: 4, high: 6), direction: nil).spokenPhrase, "4-6 miles")
+        XCTAssertEqual(Wind.measured(.init(low: 1, high: 3), .west).spokenPhrase, "1-3 miles per hour from the West")
+        XCTAssertEqual(Wind.measured(.init(8), .southwest).spokenPhrase, "8 miles per hour from the Southwest")
+        XCTAssertEqual(Wind.measured(.init(1), .north).spokenPhrase, "1 mile per hour from the North")
+        XCTAssertEqual(Wind(speed: .init(low: 4, high: 6), direction: nil).spokenPhrase, "4-6 miles per hour")
         XCTAssertEqual(Wind.lightVariable().spokenPhrase, "light and variable")
         XCTAssertEqual(Wind.measured(.init(low: 3, high: 5), .west, gust: .init(low: 8, high: 12)).spokenPhrase,
-                       "3-5 miles from the West, gusts 8-12")
+                       "3-5 miles per hour from the West, gusts 8-12")
         XCTAssertEqual(Wind.lightVariable(gust: .init(low: 6, high: 12)).spokenPhrase,
                        "light and variable, gusts 6-12")
     }

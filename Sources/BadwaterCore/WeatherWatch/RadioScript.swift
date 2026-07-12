@@ -5,7 +5,7 @@ import Foundation
 ///
 /// > "Diamond Mountain, stand by for your 0900 Weather observations. Taken near
 /// > the 659 road at an elevation of 10,300 feet, on a Western aspect. Dry Bulb
-/// > 60 degrees, up 5, RH 25%, down 3. Winds are 1-3 miles from the West,
+/// > 60 degrees, up 5, RH 25%, down 3. Winds are 1-3 miles per hour from the West,
 /// > Probability of Ignition Unshaded is 50%, Shaded is 30%. I repeat, Dry Bulb
 /// > 60 degrees, up 5, RH 25%, down 3. How copy?"
 ///

@@ -73,14 +73,15 @@ public struct Wind: Hashable, Codable, Sendable {
         return dir + speed.rendered + gustSuffix
     }
 
-    /// Spoken radio phrasing — `"1-3 miles from the West"`, `"8 miles from the
-    /// Southwest"`, `"1 mile from the North"`, `"light and variable"`; gusts
-    /// append `", gusts 8-12"`. Mirrors the other renderings' precedence:
-    /// `speed == nil` means light/variable and ignores any direction.
+    /// Spoken radio phrasing — `"1-3 miles per hour from the West"`, `"8 miles
+    /// per hour from the Southwest"`, `"1 mile per hour from the North"`,
+    /// `"light and variable"`; gusts append `", gusts 8-12"`. Mirrors the other
+    /// renderings' precedence: `speed == nil` means light/variable and ignores
+    /// any direction.
     public var spokenPhrase: String {
         let gustSuffix = gust.map { ", gusts \($0.rendered)" } ?? ""
         guard let speed else { return "light and variable" + gustSuffix }
-        let unit = (speed.low == speed.high && speed.low == 1) ? "mile" : "miles"
+        let unit = (speed.low == speed.high && speed.low == 1) ? "mile per hour" : "miles per hour"
         let dir = direction.map { " from the \($0.displayName)" } ?? ""
         return "\(speed.rendered) \(unit)\(dir)" + gustSuffix
     }

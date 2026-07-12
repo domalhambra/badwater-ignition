@@ -135,10 +135,10 @@ final class RadioScriptTests: XCTestCase {
         XCTAssertEqual(Wind.measured(.init(1), .north).spokenPhrase, "1 mile per hour from the North")
         XCTAssertEqual(Wind(speed: .init(low: 4, high: 6), direction: nil).spokenPhrase, "4-6 miles per hour")
         XCTAssertEqual(Wind.lightVariable().spokenPhrase, "light and variable")
-        XCTAssertEqual(Wind.measured(.init(low: 3, high: 5), .west, gust: .init(low: 8, high: 12)).spokenPhrase,
-                       "3-5 miles per hour from the West, gusts 8-12")
-        XCTAssertEqual(Wind.lightVariable(gust: .init(low: 6, high: 12)).spokenPhrase,
-                       "light and variable, gusts 6-12")
+        XCTAssertEqual(Wind.measured(.init(low: 3, high: 5), .west, gust: 12).spokenPhrase,
+                       "3-5 miles per hour from the West, gusts up to 12")
+        XCTAssertEqual(Wind.lightVariable(gust: 12).spokenPhrase,
+                       "light and variable, gusts up to 12")
     }
 
     func testNilWindOmitsWindsSentence() {

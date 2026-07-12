@@ -46,14 +46,14 @@ final class ExportTests: XCTestCase {
     // MARK: - Pure render types
 
     func testWindRenderings() {
-        let w = Wind.measured(.init(low: 3, high: 5), .north, gust: .init(low: 8, high: 12))
-        XCTAssertEqual(w.imetCell, "3-5 North, Gust 8-12")
-        XCTAssertEqual(w.spotString, "N 3-5 Gust 8-12")
+        let w = Wind.measured(.init(low: 3, high: 5), .north, gust: 12)
+        XCTAssertEqual(w.imetCell, "3-5 North, Gust 12")
+        XCTAssertEqual(w.spotString, "N 3-5 Gust 12")
         XCTAssertEqual(Wind.lightVariable().imetCell, "Light/Variable")
         XCTAssertEqual(Wind.lightVariable().spotString, "Calm")
         XCTAssertEqual(Wind.measured(.init(low: 1, high: 5), .south).imetCell, "1-5 South")
         XCTAssertEqual(Wind.measured(.init(8), .southwest).imetCell, "8 Southwest")
-        XCTAssertEqual(Wind.lightVariable(gust: .init(low: 6, high: 12)).imetCell, "Light/Variable, Gust 6-12")
+        XCTAssertEqual(Wind.lightVariable(gust: 12).imetCell, "Light/Variable, Gust 12")
     }
 
     func testGeoPointRender() {

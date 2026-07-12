@@ -105,8 +105,11 @@ update on every input change.
 ### 4.1 Ignition (PIG / FFM)
 Top-to-bottom:
 1. **Header** — "Ignition" + `IRPG p.44–49` mono reference.
-2. **Fast inputs** — two `StepperCard`s: Dry bulb °F, Rel. humidity %. Big −/+
-   targets (≥ 48 pt) for gloved hands.
+2. **Fast inputs** — Dry bulb °F plus a **Humidity source** chip row (`Direct` /
+   `From wet bulb`). Direct shows a Rel. humidity % `StepperCard` (Kestrel); From
+   wet bulb swaps in a Wet bulb °F `StepperCard` and an elevation-band chip row,
+   and shows the derived RH read-only in pool teal — the value that flows into
+   the chain. Big −/+ targets (≥ 48 pt) for gloved hands.
 3. **Site factors** — chip rows: Month (shows resolved table B/C/D), Time of day
    (six bands + Night), Aspect, Slope, Elevation vs. weather site. These persist
    between launches; month/time pre-fill from the clock.

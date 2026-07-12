@@ -2,6 +2,27 @@ import Foundation
 import Observation
 import BadwaterCore
 
+/// Where the Ignition screen's relative humidity comes from.
+///
+/// A Kestrel (or other electronic meter) reads RH directly; a sling
+/// psychrometer / belt weather kit reads a wet-bulb temperature from which RH is
+/// derived (dry bulb + wet bulb + elevation band). Both feed the same PIG chain.
+enum RHSource: String, CaseIterable, Identifiable, Hashable {
+    /// RH is typed in directly (e.g. read off a Kestrel).
+    case direct
+    /// RH is derived from a wet-bulb temperature (slinging weather).
+    case wetBulb
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .direct: return "Direct"
+        case .wetBulb: return "From wet bulb"
+        }
+    }
+}
+
 /// View model for the Ignition (PIG / FFM) screen.
 ///
 /// Temperature and humidity are the fast-changing inputs; the site factors
@@ -9,12 +30,22 @@ import BadwaterCore
 /// change while a crew works the same piece of line. Month and time-of-day
 /// pre-fill from the device clock and can be overridden for forecasts.
 ///
-/// Every property change recomputes ``estimate`` synchronously — the screen has
-/// no "Calculate" button. All computation is local and offline.
+/// Relative humidity is either typed directly or derived from a wet-bulb
+/// temperature via the NWCG psychrometric method (see ``rhSource`` and
+/// ``effectiveRelativeHumidity``). Every property change recomputes ``estimate``
+/// synchronously — the screen has no "Calculate" button. All computation is
+/// local and offline.
 @Observable
 final class IgnitionModel {
-    var dryBulbF: Int { didSet { persist() } }
+    var dryBulbF: Int { didSet { clampWet(); persist() } }
+    /// RH typed directly (Kestrel). Used when ``rhSource`` is ``RHSource/direct``.
     var relativeHumidity: Int { didSet { persist() } }
+    /// Wet-bulb temperature (°F) for the sling-psychrometer RH derivation.
+    var wetBulbF: Int { didSet { persist() } }
+    /// Elevation band supplying the station pressure for the RH derivation.
+    var elevationBand: ElevationBand { didSet { persist() } }
+    /// Whether RH is typed directly or derived from the wet bulb.
+    var rhSource: RHSource { didSet { persist() } }
     var month: Int { didSet { persist() } }
     var timeOfDay: TimeOfDay { didSet { persist() } }
     var aspect: Aspect { didSet { persist() } }
@@ -29,6 +60,10 @@ final class IgnitionModel {
         // Fast inputs start at sensible mid-range defaults.
         dryBulbF = store.object(forKey: Keys.dryBulb) as? Int ?? 75
         relativeHumidity = store.object(forKey: Keys.rh) as? Int ?? 20
+        // Humidity source and its wet-bulb inputs persist between launches.
+        wetBulbF = store.object(forKey: Keys.wetBulb) as? Int ?? 60
+        elevationBand = ElevationBand(rawValue: store.object(forKey: Keys.band) as? Int ?? 3) ?? .band3
+        rhSource = RHSource(rawValue: store.string(forKey: Keys.rhSource) ?? "") ?? .direct
         // Month / time pre-fill from the clock unless previously overridden this session.
         month = comps.month ?? 7
         timeOfDay = TimeOfDay.from(hour: comps.hour ?? 12, minute: comps.minute ?? 0)
@@ -36,23 +71,47 @@ final class IgnitionModel {
         aspect = Aspect(rawValue: store.string(forKey: Keys.aspect) ?? "") ?? .south
         slope = Slope(rawValue: store.string(forKey: Keys.slope) ?? "") ?? .gentle
         elevationDelta = ElevationDelta(rawValue: store.string(forKey: Keys.elevation) ?? "") ?? .level
+        clampWet()
+    }
+
+    /// The relative humidity actually used by the calculation: typed directly
+    /// (``RHSource/direct``), or derived from the wet bulb via the NWCG
+    /// psychrometric method (``RHSource/wetBulb``).
+    var effectiveRelativeHumidity: Int {
+        switch rhSource {
+        case .direct:
+            return relativeHumidity
+        case .wetBulb:
+            return Psychrometrics.compute(dryBulbF: dryBulbF, wetBulbF: wetBulbF, band: elevationBand)
+                .relativeHumidity
+        }
     }
 
     /// The live estimate for the current inputs (both shaded and unshaded).
     var estimate: IgnitionEstimate {
         IgnitionCalculator.estimate(
             IgnitionInput(
-                dryBulbF: dryBulbF, relativeHumidity: relativeHumidity, month: month,
+                dryBulbF: dryBulbF, relativeHumidity: effectiveRelativeHumidity, month: month,
                 timeOfDay: timeOfDay, aspect: aspect, slope: slope, elevationDelta: elevationDelta))
     }
 
-    /// Seed the humidity result coming from the RH screen ("Use in ignition calc").
-    func applyHumidity(_ rh: Int) { relativeHumidity = min(max(rh, 0), 100) }
+    /// Seed RH coming from the Humidity screen ("Use in ignition calc"). The
+    /// pushed value is a concrete percentage, so it lands as a direct entry.
+    func applyHumidity(_ rh: Int) {
+        rhSource = .direct
+        relativeHumidity = min(max(rh, 0), 100)
+    }
+
+    /// The wet bulb cannot read hotter than the dry bulb.
+    private func clampWet() { if wetBulbF > dryBulbF { wetBulbF = dryBulbF } }
 
     private func persist() {
         // didSet does not fire during init, so this only runs on user edits.
         store.set(dryBulbF, forKey: Keys.dryBulb)
         store.set(relativeHumidity, forKey: Keys.rh)
+        store.set(wetBulbF, forKey: Keys.wetBulb)
+        store.set(elevationBand.rawValue, forKey: Keys.band)
+        store.set(rhSource.rawValue, forKey: Keys.rhSource)
         store.set(aspect.rawValue, forKey: Keys.aspect)
         store.set(slope.rawValue, forKey: Keys.slope)
         store.set(elevationDelta.rawValue, forKey: Keys.elevation)
@@ -61,6 +120,9 @@ final class IgnitionModel {
     private enum Keys {
         static let dryBulb = "ignition.dryBulbF"
         static let rh = "ignition.rh"
+        static let wetBulb = "ignition.wetBulbF"
+        static let band = "ignition.elevationBand"
+        static let rhSource = "ignition.rhSource"
         static let aspect = "ignition.aspect"
         static let slope = "ignition.slope"
         static let elevation = "ignition.elevationDelta"

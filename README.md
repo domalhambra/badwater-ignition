@@ -19,6 +19,8 @@ for cell.
   slope, elevation-vs-weather-site) → Reference Fuel Moisture → correction →
   Fine Fuel Moisture → **PIG (shaded and unshaded)**, plus the IRPG p.49
   plain-language fire-behavior interpretation. Handles the nighttime "+5" rule.
+  RH is entered directly (off a Kestrel) or **derived from a wet-bulb
+  temperature** (sling psychrometer / belt weather kit) right on the screen.
 - **Humidity:** Dry-bulb + wet-bulb + elevation band → **relative humidity and
   dew point** (NWCG psychrometric method, with Alaska thresholds). One tap sends
   the result into the Ignition calculator.

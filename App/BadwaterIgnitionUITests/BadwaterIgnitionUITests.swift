@@ -39,4 +39,15 @@ final class BadwaterIgnitionUITests: XCTestCase {
         dryBulb.swipeUp()
         XCTAssertTrue(app.staticTexts["result-Unshaded"].exists)
     }
+
+    func testWetBulbSourceRevealsWetBulbInput() {
+        let app = XCUIApplication()
+        app.launch()
+        // Switching the humidity source to "From wet bulb" reveals the wet-bulb
+        // stepper; the PIG results keep rendering with the derived RH.
+        app.buttons["From wet bulb"].tap()
+        XCTAssertTrue(app.otherElements["Wet bulb"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["derived-rh"].exists)
+        XCTAssertTrue(app.staticTexts["result-Unshaded"].exists)
+    }
 }

@@ -99,6 +99,12 @@ final class WeatherWatchModel {
         IMETWorkbook.build(from: shift, calendar: calendar)
     }
 
+    /// A tab-separated, Notes-app-ready table of the shift's observations —
+    /// hand this to the OS share sheet ("Copy to Notes") for AirDrop.
+    func notesText(calendar: Calendar = .current) -> String {
+        NotesExport.plainText(from: shift, calendar: calendar)
+    }
+
     /// A plain-text NWS spot-request "recent observations" block for the shift.
     func spotObservationsText(includePoI: Bool = true, calendar: Calendar = .current) -> String {
         let header = SpotObsHeader(

@@ -130,6 +130,24 @@ final class IgnitionModelTests: XCTestCase {
                        stamped.timeIntervalSince1970, accuracy: 0.001)
     }
 
+    func testTornStoreClampDoesNotFakeAFreshWeatherEdit() {
+        // Simulate an interrupted persist: wet > dry on disk with an hours-old
+        // edit stamp. Init clamps the wet bulb (fires its didSet), but the stamp
+        // must survive as-restored — a restore is not a user edit.
+        let store = freshStore()
+        store.set(70, forKey: "ignition.dryBulbF")
+        store.set(90, forKey: "ignition.wetBulbF")        // torn: wet > dry
+        let fiveHoursAgo = Date().addingTimeInterval(-5 * 3600).timeIntervalSince1970
+        store.set(fiveHoursAgo, forKey: "ignition.weatherEditedAt")
+
+        let m = IgnitionModel(store: store)
+        XCTAssertLessThanOrEqual(m.wetBulbF, m.dryBulbF)  // clamp still applied
+        XCTAssertEqual(m.weatherEditedAt!.timeIntervalSince1970, fiveHoursAgo, accuracy: 0.001)
+        // And the store still carries the old stamp for the NEXT launch too.
+        XCTAssertEqual(store.object(forKey: "ignition.weatherEditedAt") as? Double ?? 0,
+                       fiveHoursAgo, accuracy: 0.001)
+    }
+
     // MARK: - Clock auto-refresh (red-team #4)
 
     private func mountain() -> Calendar {

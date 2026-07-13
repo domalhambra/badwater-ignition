@@ -67,9 +67,17 @@ final class IgnitionModel {
         aspect = Aspect(rawValue: store.string(forKey: Keys.aspect) ?? "") ?? .south
         slope = Slope(rawValue: store.string(forKey: Keys.slope) ?? "") ?? .gentle
         elevationDelta = ElevationDelta(rawValue: store.string(forKey: Keys.elevation) ?? "") ?? .level
-        weatherEditedAt = (store.object(forKey: Keys.weatherEdited) as? Double)
-            .map { Date(timeIntervalSince1970: $0) }
+        let storedWeatherEdit = store.object(forKey: Keys.weatherEdited) as? Double
+        weatherEditedAt = storedWeatherEdit.map { Date(timeIntervalSince1970: $0) }
         clampWet()
+        // clampWet() runs after self is fully initialized, so a clamp on torn
+        // persisted data (wet > dry after an interrupted persist) goes through
+        // wetBulbF's didSet and stamps touchWeather() with "now". Re-assert the
+        // persisted stamp: restoring state is not a user edit, and "edited five
+        // hours ago" must survive a relaunch for the staleness warning to work.
+        weatherEditedAt = storedWeatherEdit.map { Date(timeIntervalSince1970: $0) }
+        if let s = storedWeatherEdit { store.set(s, forKey: Keys.weatherEdited) }
+        else { store.removeObject(forKey: Keys.weatherEdited) }
     }
 
     /// Re-derive month + time-of-day from the wall clock unless the operator has

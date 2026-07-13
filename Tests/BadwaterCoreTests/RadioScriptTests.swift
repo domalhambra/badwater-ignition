@@ -106,11 +106,14 @@ final class RadioScriptTests: XCTestCase {
         let previous = obs(dry: 55, rh: 28, elevationFeet: 10300,
                            spokenLocation: "near the 659 road")
         let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
-        let script = RadioScript.render(
-            addressee: "", timeLabel: "1100",
-            spokenLocation: "  near the 659 road  ",
-            current: current, previous: previous)
-        XCTAssertFalse(script.contains("Taken"))
+        // Spaces AND a pasted trailing newline are both non-differences.
+        for variant in ["  near the 659 road  ", "near the 659 road\n"] {
+            let script = RadioScript.render(
+                addressee: "", timeLabel: "1100",
+                spokenLocation: variant,
+                current: current, previous: previous)
+            XCTAssertFalse(script.contains("Taken"), "re-announced for: \(variant.debugDescription)")
+        }
     }
 
     func testPreFeatureRecordReannouncesOnce() {

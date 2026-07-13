@@ -261,6 +261,23 @@ final class WeatherWatchModelTests: XCTestCase {
         XCTAssertTrue(script.hasPrefix("Diamond Mountain, stand by for your"))
     }
 
+    func testPreFeatureReplayNeverBorrowsTheCurrentLocation() {
+        // A legacy obs has no frozen spokenLocation. Replaying it after the crew
+        // renamed the site must NOT put the crew's CURRENT location into the
+        // historical script — an unknown location degrades to aspect only.
+        let ign = ignition(dry: 60, rh: 25)
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.prefeature2"))
+        w.setShiftHeader(division: nil, locationName: "near the 659 road")
+        let legacy = w.pendingObs(at: Date(timeIntervalSince1970: 0))
+        w.shift.obs.append(legacy)                       // logged pre-feature
+        w.setShiftHeader(division: nil, locationName: "at the saddle above Split Rock")
+        let replay = w.broadcastScript(for: legacy)
+        XCTAssertFalse(replay.contains("at the saddle above Split Rock"), replay)
+        // The pending PREVIEW, by contrast, is the current position — live applies.
+        let preview = w.broadcastScript(for: w.pendingObs(at: Date(timeIntervalSince1970: 7200)))
+        XCTAssertTrue(preview.contains("at the saddle above Split Rock"), preview)
+    }
+
     func testBroadcastScriptResolvesPreviousObs() {
         let ign = ignition(dry: 80, rh: 15)
         let w = WeatherWatchModel(ignition: ign, store: fresh("watch.script"))

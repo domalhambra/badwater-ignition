@@ -80,9 +80,11 @@ public enum RadioScript {
     }
 
     /// Trimmed, empty-collapsed-to-nil form used for the location-text diff, so
-    /// stray whitespace never causes a phantom re-announcement.
+    /// stray whitespace never causes a phantom re-announcement. Newlines count
+    /// as whitespace too — pasted text often carries a trailing `\n`, which must
+    /// neither re-trigger the announcement nor end up inside the spoken sentence.
     static func normalized(_ location: String?) -> String? {
-        guard let t = location?.trimmingCharacters(in: .whitespaces), !t.isEmpty else { return nil }
+        guard let t = location?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
         return t
     }
 

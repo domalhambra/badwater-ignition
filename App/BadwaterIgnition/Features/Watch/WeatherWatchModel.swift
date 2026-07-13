@@ -236,16 +236,23 @@ final class WeatherWatchModel {
                          forceLocation: Bool = false, suppressLocation: Bool = false) -> String {
         if let frozen = obs.broadcastText { return frozen }
         let previous: WeatherObs?
+        let spokenLocation: String?
         if shift.obs.contains(where: { $0.id == obs.id }) {
             // A logged pre-feature obs (no frozen script): render against its
-            // chronological predecessor.
+            // chronological predecessor, speaking ONLY what was frozen on it.
+            // The live shift.locationName may describe wherever the crew is NOW —
+            // substituting it would misattribute a historical reading's location,
+            // so an unknown location degrades to elevation + aspect (both frozen).
             previous = chronologicalPrevious(before: obs.timestamp, excluding: obs.id)
+            spokenLocation = obs.spokenLocation
         } else {
+            // A pending preview IS the current position — the live location applies.
             previous = shift.latest
+            spokenLocation = shift.locationName
         }
         return RadioScript.render(
             addressee: addressee, timeLabel: obs.timeLabel(calendar),
-            spokenLocation: obs.spokenLocation ?? shift.locationName,
+            spokenLocation: spokenLocation,
             current: obs, previous: previous,
             forceLocation: forceLocation, suppressLocation: suppressLocation)
     }

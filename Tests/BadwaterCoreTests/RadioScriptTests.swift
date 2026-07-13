@@ -48,12 +48,12 @@ final class RadioScriptTests: XCTestCase {
 
         let script = RadioScript.render(
             addressee: "Diamond Mountain", timeLabel: "0900",
-            spokenLocation: "the 659 road", current: current, previous: previous)
+            spokenLocation: "near the 659 road", current: current, previous: previous)
         XCTAssertEqual(script,
             "Diamond Mountain, stand by for your 0900 Weather observations. "
             + "Taken near the 659 road at an elevation of 10,300 feet, on a Western aspect. "
             + "Dry Bulb 60 degrees, up 5, RH 25%, down 3. "
-            + "Winds are 1-3 miles from the West, Probability of Ignition Unshaded is 50%, Shaded is 30%. "
+            + "Winds are 1-3 miles per hour from the West, Probability of Ignition Unshaded is 50%, Shaded is 30%. "
             + "I repeat, Dry Bulb 60 degrees, up 5, RH 25%, down 3. How copy?")
     }
 
@@ -63,7 +63,7 @@ final class RadioScriptTests: XCTestCase {
         let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
         let script = RadioScript.render(
             addressee: "Diamond Mountain", timeLabel: "0800",
-            spokenLocation: "the 659 road", current: current, previous: nil)
+            spokenLocation: "near the 659 road", current: current, previous: nil)
         XCTAssertTrue(script.contains("Taken near the 659 road"))
         XCTAssertTrue(script.contains("Dry Bulb 60 degrees, RH 25%."))
         XCTAssertFalse(script.contains(", up"))
@@ -78,7 +78,7 @@ final class RadioScriptTests: XCTestCase {
         let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
         let script = RadioScript.render(
             addressee: "Diamond Mountain", timeLabel: "1000",
-            spokenLocation: "the 659 road", current: current, previous: previous)
+            spokenLocation: "near the 659 road", current: current, previous: previous)
         XCTAssertFalse(script.contains("Taken"))
         XCTAssertTrue(script.contains("Weather observations. Dry Bulb 60 degrees"))
     }
@@ -101,7 +101,7 @@ final class RadioScriptTests: XCTestCase {
 
         // Elevation → nil counts as changed; sentence degrades to loc + aspect.
         let lost = obs(dry: 60, rh: 25, elevationFeet: nil)
-        let lostScript = RadioScript.render(addressee: "", timeLabel: "1000", spokenLocation: "the 659 road",
+        let lostScript = RadioScript.render(addressee: "", timeLabel: "1000", spokenLocation: "near the 659 road",
                                             current: lost, previous: base)
         XCTAssertTrue(lostScript.contains("Taken near the 659 road, on a Western aspect."))
         XCTAssertFalse(lostScript.contains("elevation"))
@@ -130,15 +130,15 @@ final class RadioScriptTests: XCTestCase {
     // MARK: - (f) Wind variants
 
     func testWindSpokenPhrases() {
-        XCTAssertEqual(Wind.measured(.init(low: 1, high: 3), .west).spokenPhrase, "1-3 miles from the West")
-        XCTAssertEqual(Wind.measured(.init(8), .southwest).spokenPhrase, "8 miles from the Southwest")
-        XCTAssertEqual(Wind.measured(.init(1), .north).spokenPhrase, "1 mile from the North")
-        XCTAssertEqual(Wind(speed: .init(low: 4, high: 6), direction: nil).spokenPhrase, "4-6 miles")
+        XCTAssertEqual(Wind.measured(.init(low: 1, high: 3), .west).spokenPhrase, "1-3 miles per hour from the West")
+        XCTAssertEqual(Wind.measured(.init(8), .southwest).spokenPhrase, "8 miles per hour from the Southwest")
+        XCTAssertEqual(Wind.measured(.init(1), .north).spokenPhrase, "1 mile per hour from the North")
+        XCTAssertEqual(Wind(speed: .init(low: 4, high: 6), direction: nil).spokenPhrase, "4-6 miles per hour")
         XCTAssertEqual(Wind.lightVariable().spokenPhrase, "light and variable")
-        XCTAssertEqual(Wind.measured(.init(low: 3, high: 5), .west, gust: .init(low: 8, high: 12)).spokenPhrase,
-                       "3-5 miles from the West, gusts 8-12")
-        XCTAssertEqual(Wind.lightVariable(gust: .init(low: 6, high: 12)).spokenPhrase,
-                       "light and variable, gusts 6-12")
+        XCTAssertEqual(Wind.measured(.init(low: 3, high: 5), .west, gust: 12).spokenPhrase,
+                       "3-5 miles per hour from the West, gusts up to 12")
+        XCTAssertEqual(Wind.lightVariable(gust: 12).spokenPhrase,
+                       "light and variable, gusts up to 12")
     }
 
     func testNilWindOmitsWindsSentence() {
@@ -164,10 +164,13 @@ final class RadioScriptTests: XCTestCase {
 
     func testLocationSentenceNilMatrix() {
         let both = obs(dry: 60, rh: 25, elevationFeet: 10300)
-        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "the 659 road", obs: both),
+        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "near the 659 road", obs: both),
                        "Taken near the 659 road at an elevation of 10,300 feet, on a Western aspect.")
-        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "the 659 road", obs: obs(dry: 60, rh: 25)),
+        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "near the 659 road", obs: obs(dry: 60, rh: 25)),
                        "Taken near the 659 road, on a Western aspect.")
+        // Verbatim: a different preposition is inserted exactly as typed (no "near").
+        XCTAssertEqual(RadioScript.locationSentence(spokenLocation: "at the 659 junction", obs: both),
+                       "Taken at the 659 junction at an elevation of 10,300 feet, on a Western aspect.")
         XCTAssertEqual(RadioScript.locationSentence(spokenLocation: nil, obs: both),
                        "Taken at an elevation of 10,300 feet, on a Western aspect.")
         XCTAssertEqual(RadioScript.locationSentence(spokenLocation: nil, obs: obs(dry: 60, rh: 25)),

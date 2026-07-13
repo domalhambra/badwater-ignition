@@ -92,6 +92,15 @@ final class IgnitionModelTests: XCTestCase {
         XCTAssertLessThanOrEqual(m.wetBulbF, 60)
     }
 
+    func testRaisingWetBulbAboveDryClamps() {
+        let m = IgnitionModel(store: freshStore())
+        m.rhSource = .wetBulb
+        m.dryBulbF = 70
+        m.wetBulbF = 90                       // typed above the dry bulb
+        XCTAssertEqual(m.wetBulbF, 70)        // clamped down on edit, not only when dry drops
+        XCTAssertLessThanOrEqual(m.effectiveRelativeHumidity, 100)   // no impossible >100% RH
+    }
+
     func testApplyHumiditySwitchesToDirect() {
         let m = IgnitionModel(store: freshStore())
         m.rhSource = .wetBulb
@@ -128,6 +137,12 @@ final class HumidityModelTests: XCTestCase {
         // Lowering dry bulb below wet bulb clamps the wet bulb.
         m.dryBulbF = 40
         XCTAssertLessThanOrEqual(m.wetBulbF, 40)
+
+        // Raising the wet bulb above the dry bulb clamps it too.
+        m.dryBulbF = 61
+        m.wetBulbF = 80
+        XCTAssertEqual(m.wetBulbF, 61)
+        XCTAssertLessThanOrEqual(m.result.relativeHumidity, 100)
     }
 
     func testBandLabelRespectsAlaska() {

@@ -107,12 +107,16 @@ public struct Shift: Identifiable, Equatable, Codable, Sendable {
         self.locationName = locationName
     }
 
-    /// The most recent observation.
-    public var latest: WeatherObs? { obs.last }
+    /// The most recent observation *by timestamp* — not merely the last appended.
+    /// A back-filled obs (e.g. a forgotten 0900 logged after the 1000) must never
+    /// masquerade as "current" on the dashboard, so this is the chronological max.
+    public var latest: WeatherObs? { obs.max { $0.timestamp < $1.timestamp } }
 
-    /// `(timestamp, value)` points for a metric across the shift, in log order.
-    /// A `nil` value marks an obs where the metric wasn't computed.
+    /// `(timestamp, value)` points for a metric across the shift, in **chronological
+    /// order** (a back-filled obs can't kink the trend line). A `nil` value marks
+    /// an obs where the metric wasn't computed.
     public func series(of metric: TriggerMetric) -> [(date: Date, value: Int?)] {
-        obs.map { (date: $0.timestamp, value: $0.value(of: metric)) }
+        obs.sorted { $0.timestamp < $1.timestamp }
+            .map { (date: $0.timestamp, value: $0.value(of: metric)) }
     }
 }

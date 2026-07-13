@@ -46,14 +46,14 @@ final class ExportTests: XCTestCase {
     // MARK: - Pure render types
 
     func testWindRenderings() {
-        let w = Wind.measured(.init(low: 3, high: 5), .north, gust: .init(low: 8, high: 12))
-        XCTAssertEqual(w.imetCell, "3-5 North, Gust 8-12")
-        XCTAssertEqual(w.spotString, "N 3-5 Gust 8-12")
+        let w = Wind.measured(.init(low: 3, high: 5), .north, gust: 12)
+        XCTAssertEqual(w.imetCell, "3-5 North, Gust 12")
+        XCTAssertEqual(w.spotString, "N 3-5 Gust 12")
         XCTAssertEqual(Wind.lightVariable().imetCell, "Light/Variable")
         XCTAssertEqual(Wind.lightVariable().spotString, "Calm")
         XCTAssertEqual(Wind.measured(.init(low: 1, high: 5), .south).imetCell, "1-5 South")
         XCTAssertEqual(Wind.measured(.init(8), .southwest).imetCell, "8 Southwest")
-        XCTAssertEqual(Wind.lightVariable(gust: .init(low: 6, high: 12)).imetCell, "Light/Variable, Gust 6-12")
+        XCTAssertEqual(Wind.lightVariable(gust: 12).imetCell, "Light/Variable, Gust 12")
     }
 
     func testGeoPointRender() {
@@ -106,6 +106,23 @@ final class ExportTests: XCTestCase {
         XCTAssertNil(d2.range(of: Data("r=\"C3\"".utf8)))     // no wet bulb cell
         XCTAssertNil(d2.range(of: Data("r=\"E3\"".utf8)))     // no wind cell
         XCTAssertNil(d2.range(of: Data("r=\"J3\"".utf8)))     // no location cell
+    }
+
+    func testWorkbookCarriesProvenanceFooter() {
+        let cal = denver()
+        let ts = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 9))!
+        let data = IMETWorkbook.build(from: Shift(started: ts, obs: [
+            obs(cal: cal, ts: ts, dry: 60, depression: nil, rh: 30, wind: nil, elev: nil, loc: nil)
+        ]), calendar: cal)
+        // The footnote is written verbatim in column A (no XML-special chars to escape),
+        // two rows below the single data row (row 3 → footer row 5).
+        XCTAssertNotNil(data.range(of: Data(IMETExport.disclaimer.utf8)))
+        XCTAssertTrue(data.range(of: Data("<row r=\"5\"><c r=\"A5\"".utf8)) != nil)
+        XCTAssertTrue(IMETExport.disclaimer.contains("not observed, not a forecast"))
+        XCTAssertTrue(IMETExport.disclaimer.hasSuffix("not affiliated with NWS/NWCG."))
+        // Even a header-only (empty) shift still carries the footnote.
+        let empty = IMETWorkbook.build(from: Shift(started: ts), calendar: cal)
+        XCTAssertNotNil(empty.range(of: Data(IMETExport.disclaimer.utf8)))
     }
 
     func testMultiDayGrouping() {

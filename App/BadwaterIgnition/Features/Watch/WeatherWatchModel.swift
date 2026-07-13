@@ -21,6 +21,12 @@ final class WeatherWatchModel {
     /// Deliberately stored app-wide, not per-shift: the radio net usually
     /// outlives a shift, so it survives `startNewShift()`.
     var addressee: String { didSet { persistAddressee() } }
+    /// Absolute site elevation (feet MSL) for the current position, sticky across
+    /// obs. When set, a pending/logged obs derives its sling RH from the
+    /// ``ElevationBand`` for THIS elevation — not the (possibly stale) band left on
+    /// the Ignition tab — and pre-fills the obs's absolute elevation. Nil restores
+    /// the earlier behavior of falling back to the Ignition tab's band.
+    var siteElevationFeet: Int? { didSet { persistSiteElevation() } }
 
     private let ignition: IgnitionModel
     private let store: UserDefaults
@@ -31,6 +37,7 @@ final class WeatherWatchModel {
         self.shift = Self.decode(Shift.self, from: store.data(forKey: Keys.shift)) ?? Shift(started: now)
         self.triggers = Self.decode([BriefedTrigger].self, from: store.data(forKey: Keys.triggers)) ?? []
         self.addressee = store.string(forKey: Keys.addressee) ?? ""
+        self.siteElevationFeet = store.object(forKey: Keys.siteElevation) as? Int
     }
 
     /// The observation a LOG tap would freeze right now: the live estimate, with
@@ -38,16 +45,27 @@ final class WeatherWatchModel {
     /// and the triggers it currently meets already computed.
     func pendingObs(at now: Date = Date(), calendar: Calendar = .current) -> WeatherObs {
         let comps = calendar.dateComponents([.month, .hour, .minute], from: now)
+        // A slung obs uses the station-pressure band for the observation site's own
+        // elevation when the crew has entered one; otherwise it falls back to the
+        // band on the Ignition tab. The SAME HumidityResult is frozen into the obs
+        // AND feeds the estimate, so the logged record and the PIG it produces can
+        // never disagree about which band (elevation) was used.
+        let humidity: HumidityResult?
+        if ignition.rhSource == .wetBulb {
+            let band = siteElevationFeet.map { ElevationBand.forElevation(feetMSL: $0) } ?? ignition.elevationBand
+            humidity = Psychrometrics.compute(
+                dryBulbF: ignition.dryBulbF, wetBulbF: ignition.wetBulbF, band: band)
+        } else {
+            humidity = nil
+        }
+        let relativeHumidity = humidity?.relativeHumidity ?? ignition.effectiveRelativeHumidity
         let input = IgnitionInput(
             dryBulbF: ignition.dryBulbF,
-            relativeHumidity: ignition.effectiveRelativeHumidity,
+            relativeHumidity: relativeHumidity,
             month: comps.month ?? ignition.month,
             timeOfDay: TimeOfDay.from(hour: comps.hour ?? 12, minute: comps.minute ?? 0),
             aspect: ignition.aspect, slope: ignition.slope, elevationDelta: ignition.elevationDelta)
         let estimate = IgnitionCalculator.estimate(input)
-        let humidity = ignition.rhSource == .wetBulb
-            ? Psychrometrics.compute(dryBulbF: ignition.dryBulbF, wetBulbF: ignition.wetBulbF, band: ignition.elevationBand)
-            : nil
         let base = WeatherObs(timestamp: now, estimate: estimate, humidity: humidity, rhSource: ignition.rhSource)
         return WeatherObs(
             id: base.id, timestamp: now, estimate: estimate, humidity: humidity,
@@ -63,15 +81,17 @@ final class WeatherWatchModel {
                 wind: Wind? = nil, elevationFeet: Int? = nil, location: GeoPoint? = nil) -> WeatherObs {
         var obs = pendingObs(at: now, calendar: calendar)
         obs.wind = wind
-        obs.elevationFeet = elevationFeet
+        // An explicit per-obs elevation wins; otherwise fall back to the sticky
+        // site elevation so the logged record matches the band used for its RH.
+        obs.elevationFeet = elevationFeet ?? siteElevationFeet
         obs.location = location
         shift.obs.append(obs)
         return obs
     }
 
-    var latest: WeatherObs? { shift.obs.last }
+    var latest: WeatherObs? { shift.latest }
 
-    /// `(timestamp, value)` points for a metric across the shift, in log order.
+    /// `(timestamp, value)` points for a metric across the shift, chronological.
     func series(of metric: TriggerMetric) -> [(date: Date, value: Int?)] { shift.series(of: metric) }
 
     /// Latched trigger status, crossed ones first.
@@ -81,6 +101,11 @@ final class WeatherWatchModel {
     var crossedCount: Int { crossings.filter(\.isCrossed).count }
 
     func startNewShift(at now: Date = Date()) { shift = Shift(started: now) }
+
+    /// Delete a mis-entered observation. Trigger crossings re-derive from the
+    /// remaining obs on the next read, so removing a bad log can't leave a
+    /// latched flag behind; the shift re-persists via `didSet`.
+    func removeObs(id: UUID) { shift.obs.removeAll { $0.id == id } }
 
     /// Set the IMET export header (division / location name), sticky per shift.
     func setShiftHeader(division: String?, locationName: String?) {
@@ -92,6 +117,12 @@ final class WeatherWatchModel {
     /// day) — hand this to the OS share sheet.
     func imetWorkbookData(calendar: Calendar = .current) -> Data {
         IMETWorkbook.build(from: shift, calendar: calendar)
+    }
+
+    /// A tab-separated, Notes-app-ready table of the shift's observations —
+    /// hand this to the OS share sheet ("Copy to Notes") for AirDrop.
+    func notesText(calendar: Calendar = .current) -> String {
+        NotesExport.plainText(from: shift, calendar: calendar)
     }
 
     /// A plain-text NWS spot-request "recent observations" block for the shift.
@@ -123,16 +154,23 @@ final class WeatherWatchModel {
     }
 
     /// The spoken radio broadcast for an observation. `previous` is the obs
-    /// logged immediately before it in the shift (drives the "up 5 / down 3"
-    /// deltas and the location-suppression rule); an obs not yet in the shift
-    /// (a pending preview) compares against the latest logged one.
+    /// immediately preceding it *in time* within the shift (drives the "up 5 /
+    /// down 3" deltas and the location-suppression rule), so a back-filled reading
+    /// still compares against the right neighbor; an obs not yet in the shift (a
+    /// pending preview) compares against the latest logged one.
     func broadcastScript(for obs: WeatherObs, calendar: Calendar = .current,
                          forceLocation: Bool = false) -> String {
         let previous: WeatherObs?
-        if let i = shift.obs.firstIndex(where: { $0.id == obs.id }) {
-            previous = i > 0 ? shift.obs[i - 1] : nil
+        if shift.obs.contains(where: { $0.id == obs.id }) {
+            // The chronological predecessor — correct even for an obs back-filled
+            // out of log order (deltas and location-suppression compare against the
+            // reading that actually preceded this one in time).
+            previous = shift.obs
+                .filter { $0.id != obs.id && $0.timestamp < obs.timestamp }
+                .max { $0.timestamp < $1.timestamp }
         } else {
-            previous = shift.obs.last
+            // A pending preview compares against the latest logged obs.
+            previous = shift.latest
         }
         return RadioScript.render(
             addressee: addressee, timeLabel: obs.timeLabel(calendar),
@@ -151,6 +189,11 @@ final class WeatherWatchModel {
     private func persistShift() { store.set(try? JSONEncoder().encode(shift), forKey: Keys.shift) }
     private func persistTriggers() { store.set(try? JSONEncoder().encode(triggers), forKey: Keys.triggers) }
     private func persistAddressee() { store.set(addressee, forKey: Keys.addressee) }
+    private func persistSiteElevation() {
+        // Store nil as an absent key (not NSNull) so a fresh model reads it back as nil.
+        if let ft = siteElevationFeet { store.set(ft, forKey: Keys.siteElevation) }
+        else { store.removeObject(forKey: Keys.siteElevation) }
+    }
 
     private static func decode<T: Decodable>(_ type: T.Type, from data: Data?) -> T? {
         guard let data else { return nil }
@@ -161,6 +204,7 @@ final class WeatherWatchModel {
         static let shift = "watch.shift"
         static let triggers = "watch.triggers"
         static let addressee = "watch.addressee"
+        static let siteElevation = "watch.siteElevationFeet"
     }
 }
 

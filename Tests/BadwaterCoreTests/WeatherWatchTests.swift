@@ -137,6 +137,36 @@ final class WeatherWatchTests: XCTestCase {
         XCTAssertEqual(blank.ruleText, "Temp ≥ — —°F")
     }
 
+    // MARK: - Live reads follow timestamp, not append order
+
+    func testLatestAndSeriesFollowTimestampNotAppendOrder() {
+        // A back-filled 0900, appended to the shift AFTER the 1000 and 1100 obs.
+        let o9  = obs(at: 9,  dryF: 64, rh: 23, slung: true)
+        let o10 = obs(at: 10, dryF: 69, rh: 20, slung: true)
+        let o11 = obs(at: 11, dryF: 74, rh: 17, slung: true)
+        let shift = Shift(started: o9.timestamp, obs: [o11, o10, o9])   // reversed append order
+
+        // "Latest" is the chronological max (1100), never merely the last appended.
+        XCTAssertEqual(shift.latest?.timestamp, o11.timestamp)
+        XCTAssertEqual(shift.latest?.value(of: .temperature), 74)
+
+        // The trend series is sorted ascending by time regardless of append order.
+        let temps = shift.series(of: .temperature)
+        XCTAssertEqual(temps.map(\.date), [o9.timestamp, o10.timestamp, o11.timestamp])
+        XCTAssertEqual(temps.map(\.value), [64, 69, 74])
+    }
+
+    func testCrossingIsRobustToUnorderedObs() {
+        let ordered = shiftObs()
+        let shuffled = [ordered[5], ordered[0], ordered[3], ordered[1], ordered[4], ordered[2]]
+        let a = TriggerEvaluator.crossing(of: rhTrigger, across: ordered)
+        let b = TriggerEvaluator.crossing(of: rhTrigger, across: shuffled)
+        XCTAssertEqual(a.firstCrossedAt, b.firstCrossedAt)   // first RH ≤ 20 at 1030 either way
+        XCTAssertEqual(a.nowValue, b.nowValue)               // "now" = 1430 (max time) either way
+        XCTAssertEqual(a.pastCount, b.pastCount)
+        XCTAssertEqual(b.nowValue, 8)                        // the 1430 value, not the array tail (1130)
+    }
+
     // MARK: - Codable round-trip
 
     func testShiftCodableRoundTrip() throws {

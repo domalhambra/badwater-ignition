@@ -40,47 +40,50 @@ public struct Wind: Hashable, Codable, Sendable {
     /// `nil` speed means light/variable — calm with no defined direction.
     public var speed: SpeedRange?
     public var direction: Direction?
-    public var gust: SpeedRange?
+    /// Peak gust in MPH — the crew reports a single ceiling ("gusts up to N"),
+    /// not a range. `nil` when not gusting.
+    public var gust: Int?
 
-    public init(speed: SpeedRange?, direction: Direction?, gust: SpeedRange? = nil) {
+    public init(speed: SpeedRange?, direction: Direction?, gust: Int? = nil) {
         self.speed = speed
         self.direction = direction
         self.gust = gust
     }
 
-    public static func lightVariable(gust: SpeedRange? = nil) -> Wind {
+    public static func lightVariable(gust: Int? = nil) -> Wind {
         Wind(speed: nil, direction: nil, gust: gust)
     }
-    public static func measured(_ speed: SpeedRange, _ direction: Direction, gust: SpeedRange? = nil) -> Wind {
+    public static func measured(_ speed: SpeedRange, _ direction: Direction, gust: Int? = nil) -> Wind {
         Wind(speed: speed, direction: direction, gust: gust)
     }
 
     /// XLSX column E — speed-first, full direction word.
-    /// e.g. `"3-5 North, Gust 8-12"`, `"Light/Variable"`, `"1-5 South"`.
+    /// e.g. `"3-5 North, Gust 12"`, `"Light/Variable"`, `"1-5 South"`.
     public var imetCell: String {
-        let gustSuffix = gust.map { ", Gust \($0.rendered)" } ?? ""
+        let gustSuffix = gust.map { ", Gust \($0)" } ?? ""
         guard let speed else { return "Light/Variable" + gustSuffix }
         let dir = direction.map { " \($0.displayName)" } ?? ""
         return speed.rendered + dir + gustSuffix
     }
 
     /// NWS spot-request line — direction-first, abbreviated.
-    /// e.g. `"N 3-5 Gust 8-12"`, `"SW 4-6"`, `"Calm"`.
+    /// e.g. `"N 3-5 Gust 12"`, `"SW 4-6"`, `"Calm"`.
     public var spotString: String {
         guard let speed else { return "Calm" }
         let dir = direction.map { "\($0.abbreviation) " } ?? ""
-        let gustSuffix = gust.map { " Gust \($0.rendered)" } ?? ""
+        let gustSuffix = gust.map { " Gust \($0)" } ?? ""
         return dir + speed.rendered + gustSuffix
     }
 
-    /// Spoken radio phrasing — `"1-3 miles from the West"`, `"8 miles from the
-    /// Southwest"`, `"1 mile from the North"`, `"light and variable"`; gusts
-    /// append `", gusts 8-12"`. Mirrors the other renderings' precedence:
-    /// `speed == nil` means light/variable and ignores any direction.
+    /// Spoken radio phrasing — `"1-3 miles per hour from the West"`, `"8 miles
+    /// per hour from the Southwest"`, `"1 mile per hour from the North"`,
+    /// `"light and variable"`; gusts append `", gusts up to 12"`. Mirrors the
+    /// other renderings' precedence: `speed == nil` means light/variable and
+    /// ignores any direction.
     public var spokenPhrase: String {
-        let gustSuffix = gust.map { ", gusts \($0.rendered)" } ?? ""
+        let gustSuffix = gust.map { ", gusts up to \($0)" } ?? ""
         guard let speed else { return "light and variable" + gustSuffix }
-        let unit = (speed.low == speed.high && speed.low == 1) ? "mile" : "miles"
+        let unit = (speed.low == speed.high && speed.low == 1) ? "mile per hour" : "miles per hour"
         let dir = direction.map { " from the \($0.displayName)" } ?? ""
         return "\(speed.rendered) \(unit)\(dir)" + gustSuffix
     }

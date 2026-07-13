@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import BadwaterCore
 
 /// The Ignition screen: inputs at top, the IRPG calculation chain in the
@@ -6,6 +7,10 @@ import BadwaterCore
 /// plain-language interpretation. Everything updates live.
 struct IgnitionView: View {
     @Bindable var model: IgnitionModel
+    @Environment(\.scenePhase) private var scenePhase
+    /// Keeps month/time tracking the wall clock across a long shift; the model
+    /// ignores ticks once the operator overrides either picker.
+    private let clockTick = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ScrollView {
@@ -37,6 +42,7 @@ struct IgnitionView: View {
                 monthPicker
                 ChipPicker(title: "Time of day", options: TimeOfDay.allCases,
                            selection: $model.timeOfDay, label: \.label)
+                if model.clockOverridden { clockOverrideNotice }
                 HStack(alignment: .top, spacing: 10) {
                     ChipPicker(title: "Aspect", options: Aspect.allCases,
                                selection: $model.aspect, label: \.rawValue)
@@ -55,6 +61,26 @@ struct IgnitionView: View {
         }
         .background(BadwaterColor.background)
         .navigationTitle("Ignition")
+        .onReceive(clockTick) { _ in model.refreshClock() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.refreshClock() }
+        }
+    }
+
+    /// Shown only while a manual month/time override is standing in for the
+    /// clock — the "visible flag" so a stale night/day rule is never silent.
+    private var clockOverrideNotice: some View {
+        Button {
+            model.resumeAutoClock()
+        } label: {
+            Label("Month/time set manually — tap to resume tracking the clock",
+                  systemImage: "clock.arrow.circlepath")
+                .font(BadwaterFont.labelSmall)
+                .foregroundStyle(BadwaterColor.accent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("clock-override-notice")
     }
 
     private var header: some View {

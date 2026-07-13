@@ -19,22 +19,34 @@ import BadwaterCore
 /// local and offline.
 @Observable
 final class IgnitionModel {
-    var dryBulbF: Int { didSet { clampWet(); persist() } }
+    var dryBulbF: Int { didSet { clampWet(); touchWeather(); persist() } }
     /// RH typed directly (Kestrel). Used when ``rhSource`` is ``RHSource/direct``.
-    var relativeHumidity: Int { didSet { persist() } }
+    var relativeHumidity: Int { didSet { touchWeather(); persist() } }
     /// Wet-bulb temperature (°F) for the sling-psychrometer RH derivation.
     /// Clamped on edit too (not only when the dry bulb drops), so a wet bulb typed
     /// above the dry bulb can't yield a physically impossible >100% RH.
-    var wetBulbF: Int { didSet { clampWet(); persist() } }
+    var wetBulbF: Int { didSet { clampWet(); touchWeather(); persist() } }
     /// Elevation band supplying the station pressure for the RH derivation.
     var elevationBand: ElevationBand { didSet { persist() } }
     /// Whether RH is typed directly or derived from the wet bulb.
-    var rhSource: RHSource { didSet { persist() } }
-    var month: Int { didSet { persist() } }
-    var timeOfDay: TimeOfDay { didSet { persist() } }
+    var rhSource: RHSource { didSet { touchWeather(); persist() } }
+    var month: Int { didSet { markClockOverridden(); persist() } }
+    var timeOfDay: TimeOfDay { didSet { markClockOverridden(); persist() } }
     var aspect: Aspect { didSet { persist() } }
     var slope: Slope { didSet { persist() } }
     var elevationDelta: ElevationDelta { didSet { persist() } }
+
+    /// When the weather inputs (dry bulb / RH / wet bulb / source) were last
+    /// hand-edited. Persisted, so "these numbers are five hours old" survives a
+    /// relaunch. Watch uses it to warn before logging against stale weather.
+    private(set) var weatherEditedAt: Date?
+    /// True once the operator manually picks a month or time of day — the
+    /// clock auto-refresh then stands down until ``resumeAutoClock(now:calendar:)``.
+    /// Session-scoped on purpose: a fresh launch re-derives from the clock.
+    private(set) var clockOverridden = false
+    /// Set while ``refreshClock(now:calendar:)`` writes month/timeOfDay, so its
+    /// own writes don't read as a manual override.
+    private var refreshingClock = false
 
     private let store: UserDefaults
 
@@ -55,7 +67,45 @@ final class IgnitionModel {
         aspect = Aspect(rawValue: store.string(forKey: Keys.aspect) ?? "") ?? .south
         slope = Slope(rawValue: store.string(forKey: Keys.slope) ?? "") ?? .gentle
         elevationDelta = ElevationDelta(rawValue: store.string(forKey: Keys.elevation) ?? "") ?? .level
+        weatherEditedAt = (store.object(forKey: Keys.weatherEdited) as? Double)
+            .map { Date(timeIntervalSince1970: $0) }
         clampWet()
+    }
+
+    /// Re-derive month + time-of-day from the wall clock unless the operator has
+    /// manually overridden them. The view calls this on a timer and on foreground,
+    /// so an app launched at 0755 doesn't still apply the night rule at 1400
+    /// (red-team #4 — the staleness `pendingObs` already works around, fixed at
+    /// the source).
+    func refreshClock(now: Date = Date(), calendar: Calendar = .current) {
+        guard !clockOverridden else { return }
+        refreshingClock = true
+        defer { refreshingClock = false }
+        let comps = calendar.dateComponents([.month, .hour, .minute], from: now)
+        if let m = comps.month, m != month { month = m }
+        let t = TimeOfDay.from(hour: comps.hour ?? 12, minute: comps.minute ?? 0)
+        if t != timeOfDay { timeOfDay = t }
+    }
+
+    /// Clear a manual month/time override and snap back to the wall clock.
+    func resumeAutoClock(now: Date = Date(), calendar: Calendar = .current) {
+        clockOverridden = false
+        refreshClock(now: now, calendar: calendar)
+    }
+
+    /// Age of the last weather edit; nil when the inputs have never been touched
+    /// on this install (first launch, defaults still showing).
+    func weatherAge(at now: Date = Date()) -> TimeInterval? {
+        weatherEditedAt.map { now.timeIntervalSince($0) }
+    }
+
+    private func markClockOverridden() {
+        if !refreshingClock { clockOverridden = true }
+    }
+
+    private func touchWeather(now: Date = Date()) {
+        weatherEditedAt = now
+        store.set(now.timeIntervalSince1970, forKey: Keys.weatherEdited)
     }
 
     /// The relative humidity actually used by the calculation: typed directly
@@ -110,6 +160,7 @@ final class IgnitionModel {
         static let aspect = "ignition.aspect"
         static let slope = "ignition.slope"
         static let elevation = "ignition.elevationDelta"
+        static let weatherEdited = "ignition.weatherEditedAt"
     }
 }
 

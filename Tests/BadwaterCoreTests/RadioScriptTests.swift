@@ -19,7 +19,8 @@ final class RadioScriptTests: XCTestCase {
         slope: Slope = .gentle,
         elevationDelta: ElevationDelta = .below,
         dry: Int, rh: Int,
-        wind: Wind? = nil, elevationFeet: Int? = nil
+        wind: Wind? = nil, elevationFeet: Int? = nil,
+        spokenLocation: String? = nil
     ) -> WeatherObs {
         let input = IgnitionInput(
             dryBulbF: dry, relativeHumidity: rh, month: month, timeOfDay: timeOfDay,
@@ -28,7 +29,8 @@ final class RadioScriptTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 0),
             estimate: IgnitionCalculator.estimate(input),
             humidity: nil, rhSource: .direct,
-            wind: wind, elevationFeet: elevationFeet)
+            wind: wind, elevationFeet: elevationFeet,
+            spokenLocation: spokenLocation)
     }
 
     // MARK: - (a) The dictated golden
@@ -74,13 +76,76 @@ final class RadioScriptTests: XCTestCase {
     // MARK: - (c) Suppression
 
     func testLocationSuppressedWhenSiteUnchanged() {
-        let previous = obs(dry: 55, rh: 28, elevationFeet: 10300)
+        // The previous obs carries the same frozen spoken-location text, so
+        // nothing about the site differs — the sentence stays silent.
+        let previous = obs(dry: 55, rh: 28, elevationFeet: 10300,
+                           spokenLocation: "near the 659 road")
         let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
         let script = RadioScript.render(
             addressee: "Diamond Mountain", timeLabel: "1000",
             spokenLocation: "near the 659 road", current: current, previous: previous)
         XCTAssertFalse(script.contains("Taken"))
         XCTAssertTrue(script.contains("Weather observations. Dry Bulb 60 degrees"))
+    }
+
+    func testLocationTextChangeReannounces() {
+        // Same elevation, aspect, and slope — the crew retyped the location
+        // after moving along the ridge. The text diff alone must re-announce
+        // (red-team Critical #2: a silent move is misattributed data).
+        let previous = obs(dry: 55, rh: 28, elevationFeet: 10300,
+                           spokenLocation: "near the 659 road")
+        let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
+        let script = RadioScript.render(
+            addressee: "", timeLabel: "1100",
+            spokenLocation: "at the saddle above Split Rock",
+            current: current, previous: previous)
+        XCTAssertTrue(script.contains("Taken at the saddle above Split Rock"))
+    }
+
+    func testWhitespaceOnlyTextDifferenceDoesNotReannounce() {
+        let previous = obs(dry: 55, rh: 28, elevationFeet: 10300,
+                           spokenLocation: "near the 659 road")
+        let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
+        // Spaces AND a pasted trailing newline are both non-differences.
+        for variant in ["  near the 659 road  ", "near the 659 road\n"] {
+            let script = RadioScript.render(
+                addressee: "", timeLabel: "1100",
+                spokenLocation: variant,
+                current: current, previous: previous)
+            XCTAssertFalse(script.contains("Taken"), "re-announced for: \(variant.debugDescription)")
+        }
+    }
+
+    func testPreFeatureRecordReannouncesOnce() {
+        // previous.spokenLocation == nil (a record logged before the field
+        // existed) counts as changed — over-announcing once beats silently
+        // omitting a move.
+        let previous = obs(dry: 55, rh: 28, elevationFeet: 10300)   // no frozen text
+        let current = obs(dry: 60, rh: 25, elevationFeet: 10300)
+        let script = RadioScript.render(
+            addressee: "", timeLabel: "1000",
+            spokenLocation: "near the 659 road", current: current, previous: previous)
+        XCTAssertTrue(script.contains("Taken near the 659 road"))
+    }
+
+    func testExplicitSuppressAlwaysWins() {
+        // The operator's "location unchanged" assertion silences the sentence
+        // even on a first obs, a changed site, or a simultaneous force.
+        let first = obs(dry: 60, rh: 25, elevationFeet: 10300)
+        XCTAssertFalse(RadioScript.render(
+            addressee: "", timeLabel: "0900", spokenLocation: "near the 659 road",
+            current: first, previous: nil, suppressLocation: true).contains("Taken"))
+
+        let previous = obs(dry: 55, rh: 28, elevationFeet: 10700,
+                           spokenLocation: "near the 659 road")
+        let moved = obs(dry: 60, rh: 25, elevationFeet: 10300)
+        XCTAssertFalse(RadioScript.render(
+            addressee: "", timeLabel: "1000", spokenLocation: "at the saddle",
+            current: moved, previous: previous, suppressLocation: true).contains("Taken"))
+        XCTAssertFalse(RadioScript.render(
+            addressee: "", timeLabel: "1000", spokenLocation: "at the saddle",
+            current: moved, previous: previous,
+            forceLocation: true, suppressLocation: true).contains("Taken"))
     }
 
     // MARK: - (d) Re-trigger cases
@@ -110,6 +175,28 @@ final class RadioScriptTests: XCTestCase {
         let same = obs(dry: 60, rh: 25, elevationFeet: 10300)
         XCTAssertTrue(RadioScript.render(addressee: "", timeLabel: "1000", spokenLocation: nil,
                                          current: same, previous: base, forceLocation: true).contains("Taken"))
+
+        // Slope changed (gentle → steep): re-announces AND speaks "steep".
+        let steepened = obs(slope: .steep, dry: 60, rh: 25, elevationFeet: 10300)
+        let steepScript = RadioScript.render(addressee: "", timeLabel: "1000", spokenLocation: nil,
+                                             current: steepened, previous: base)
+        XCTAssertTrue(steepScript.contains("Taken at an elevation of 10,300 feet, on a steep Western aspect."))
+    }
+
+    func testSteepSlopeSpokenInLocationSentence() {
+        // "steep" takes the article slot: "a steep Eastern aspect", never "an steep".
+        XCTAssertEqual(
+            RadioScript.locationSentence(spokenLocation: nil,
+                                         obs: obs(aspect: .east, slope: .steep, dry: 60, rh: 25)),
+            "Taken on a steep Eastern aspect.")
+        XCTAssertEqual(
+            RadioScript.locationSentence(spokenLocation: "near the 659 road",
+                                         obs: obs(slope: .steep, dry: 60, rh: 25, elevationFeet: 10300)),
+            "Taken near the 659 road at an elevation of 10,300 feet, on a steep Western aspect.")
+        // Gentle slope stays silent — the dictated golden's wording is untouched.
+        XCTAssertEqual(
+            RadioScript.locationSentence(spokenLocation: nil, obs: obs(dry: 60, rh: 25)),
+            "Taken on a Western aspect.")
     }
 
     // MARK: - (e) Deltas

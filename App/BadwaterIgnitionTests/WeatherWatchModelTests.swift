@@ -122,27 +122,160 @@ final class WeatherWatchModelTests: XCTestCase {
         XCTAssertEqual(w.latest?.id, later.id)                  // chronological max, not the tail
     }
 
-    func testBroadcastPreviousIsChronological() {
+    func testBackfilledObsFreezesAgainstChronologicalPredecessor() {
         let ign = ignition(dry: 60, rh: 25)
         let w = WeatherWatchModel(ignition: ign, store: fresh("watch.prev"))
         w.addressee = "Diamond Mountain"
         let t0 = Date(timeIntervalSince1970: 0)
 
-        // Log the 0100 first, then BACK-FILL the 0000 after it.
+        _ = w.logObs(at: t0)                                     // 0000 · 60 / 25
+        ign.dryBulbF = 70; ign.relativeHumidity = 15
+        _ = w.logObs(at: t0.addingTimeInterval(7200))            // 0200 · 70 / 15
+        // BACK-FILL the forgotten 0100: its frozen script must compare against
+        // the 0000 (its predecessor in time), not the 0200 (latest at log time).
         ign.dryBulbF = 65; ign.relativeHumidity = 20
-        let later = w.logObs(at: t0.addingTimeInterval(3600))   // 65 / 20
-        ign.dryBulbF = 60; ign.relativeHumidity = 25
-        let earlier = w.logObs(at: t0)                          // 60 / 25 (precedes in time)
-
-        // The 0100's predecessor is the chronologically-earlier 0000, though it was
-        // appended later: deltas 65−60 = up 5, 20−25 = down 5.
-        let script = w.broadcastScript(for: later)
+        let backfilled = w.logObs(at: t0.addingTimeInterval(3600))
+        let script = w.broadcastScript(for: backfilled)
         XCTAssertTrue(script.contains("Dry Bulb 65 degrees, up 5"), script)
         XCTAssertTrue(script.contains("RH 20%, down 5"), script)
-        // The earliest obs has no predecessor → no deltas.
-        let firstScript = w.broadcastScript(for: earlier)
-        XCTAssertFalse(firstScript.contains(", up"))
-        XCTAssertFalse(firstScript.contains(", down"))
+    }
+
+    func testFrozenBroadcastSurvivesEditsDeletesAndAddresseeChange() {
+        let ign = ignition(dry: 60, rh: 25)
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.frozen"))
+        w.addressee = "Diamond Mountain"
+        let t0 = Date(timeIntervalSince1970: 0)
+
+        let first = w.logObs(at: t0)
+        ign.dryBulbF = 65; ign.relativeHumidity = 20
+        let second = w.logObs(at: t0.addingTimeInterval(3600))
+        let asSpoken = w.broadcastScript(for: second)
+        XCTAssertTrue(asSpoken.contains("up 5"), asSpoken)
+
+        // Neither renaming the net nor deleting the neighbor can retro-alter
+        // the record of what went out over the air.
+        w.addressee = "Silver Creek"
+        w.removeObs(id: first.id)
+        XCTAssertEqual(w.broadcastScript(for: second), asSpoken)
+        XCTAssertTrue(asSpoken.hasPrefix("Diamond Mountain,"))
+    }
+
+    func testSuppressLocationAtLogTime() {
+        let w = WeatherWatchModel(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.suppress"))
+        w.setShiftHeader(division: nil, locationName: "near the 659 road")
+        // Even the first obs of a shift stays silent when the operator asserts
+        // "location unchanged" explicitly.
+        let obs = w.logObs(suppressLocation: true)
+        XCTAssertFalse(w.broadcastScript(for: obs).contains("Taken"))
+    }
+
+    func testLocationTextEditReannounces() {
+        let ign = ignition(dry: 80, rh: 15)
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.locmove"))
+        w.setShiftHeader(division: nil, locationName: "near the 659 road")
+        let t0 = Date(timeIntervalSince1970: 0)
+        _ = w.logObs(at: t0)
+        // Crew relocates along the ridge — same elevation band, same aspect —
+        // and retypes only the location. The next broadcast must announce it.
+        w.setShiftHeader(division: nil, locationName: "at the saddle above Split Rock")
+        let moved = w.logObs(at: t0.addingTimeInterval(3600))
+        XCTAssertTrue(w.broadcastScript(for: moved).contains("Taken at the saddle above Split Rock"))
+        // And an unchanged location stays suppressed.
+        let third = w.logObs(at: t0.addingTimeInterval(7200))
+        XCTAssertFalse(w.broadcastScript(for: third).contains("Taken"))
+    }
+
+    func testSiteCoordinateFoldsIntoLogAndPersists() {
+        let store = fresh("watch.coord")
+        let ign = ignition(dry: 80, rh: 15)
+        let w = WeatherWatchModel(ignition: ign, store: store)
+        w.siteCoordinate = GeoPoint(latitude: 38.21437, longitude: -112.3978)
+        // The sticky decimal lat/long lands on the logged obs (spreadsheet column J).
+        XCTAssertEqual(w.logObs().location?.rendered, "38.21437, -112.3978")
+        // An explicit per-obs coordinate wins over the sticky one.
+        let explicit = GeoPoint(latitude: 38.5, longitude: -112.5)
+        XCTAssertEqual(w.logObs(location: explicit).location, explicit)
+        // Persists across instances; clearing removes the key.
+        XCTAssertEqual(WeatherWatchModel(ignition: ign, store: store).siteCoordinate?.rendered,
+                       "38.21437, -112.3978")
+        w.siteCoordinate = nil
+        XCTAssertNil(WeatherWatchModel(ignition: ign, store: store).siteCoordinate)
+    }
+
+    func testNoteTrimsAndFolds() {
+        let w = WeatherWatchModel(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.note"))
+        XCTAssertEqual(w.logObs(note: "  sun on thermometer  ").note, "sun on thermometer")
+        XCTAssertNil(w.logObs(note: "   ").note)
+        XCTAssertNil(w.logObs().note)
+    }
+
+    func testSiteConfirmationLifecycle() {
+        let store = fresh("watch.confirm")
+        let ign = ignition(dry: 80, rh: 15)
+        let w = WeatherWatchModel(ignition: ign, store: store)
+        XCTAssertTrue(w.needsSiteConfirmation)          // fresh shift: gate is up
+        w.confirmSite()
+        XCTAssertFalse(w.needsSiteConfirmation)
+        // Confirmation persists across instances…
+        XCTAssertFalse(WeatherWatchModel(ignition: ign, store: store).needsSiteConfirmation)
+        // …and a new shift demands a fresh review.
+        w.startNewShift()
+        XCTAssertTrue(w.needsSiteConfirmation)
+        XCTAssertTrue(WeatherWatchModel(ignition: ign, store: store).needsSiteConfirmation)
+    }
+
+    func testUndoRestoresDeletedObs() {
+        let w = WeatherWatchModel(ignition: ignition(dry: 90, rh: 8), store: fresh("watch.undo"))
+        let t0 = Date(timeIntervalSince1970: 0)
+        let a = w.logObs(at: t0)
+        _ = w.logObs(at: t0.addingTimeInterval(3600))
+        w.removeObs(id: a.id)
+        XCTAssertEqual(w.shift.obs.count, 1)
+        // Undo restores the obs; timestamp-ordered reads put it back in place.
+        XCTAssertEqual(w.undoRemoveObs()?.id, a.id)
+        XCTAssertEqual(w.shift.obs.count, 2)
+        XCTAssertEqual(w.series(of: .temperature).first?.date, t0)
+        // A second undo is a no-op.
+        XCTAssertNil(w.undoRemoveObs())
+    }
+
+    func testWeatherStalenessWarning() {
+        let ign = ignition(dry: 80, rh: 15)   // helper edits inputs -> stamps weatherEditedAt
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.stale"))
+        XCTAssertFalse(w.isPendingWeatherStale())       // just edited
+        let inFiveHours = Date().addingTimeInterval(5 * 3600)
+        XCTAssertTrue(w.isPendingWeatherStale(at: inFiveHours))
+        XCTAssertNotNil(w.pendingWeatherAge(at: inFiveHours))
+    }
+
+    func testPreFeatureObsRendersLiveScript() {
+        // An obs persisted before broadcastText existed (simulated by appending
+        // a pendingObs directly) falls back to live rendering.
+        let ign = ignition(dry: 60, rh: 25)
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.prefeature"))
+        w.addressee = "Diamond Mountain"
+        let legacy = w.pendingObs(at: Date(timeIntervalSince1970: 0))
+        w.shift.obs.append(legacy)                       // bypasses logObs freezing
+        XCTAssertNil(legacy.broadcastText)
+        let script = w.broadcastScript(for: legacy)
+        XCTAssertTrue(script.hasPrefix("Diamond Mountain, stand by for your"))
+    }
+
+    func testPreFeatureReplayNeverBorrowsTheCurrentLocation() {
+        // A legacy obs has no frozen spokenLocation. Replaying it after the crew
+        // renamed the site must NOT put the crew's CURRENT location into the
+        // historical script — an unknown location degrades to aspect only.
+        let ign = ignition(dry: 60, rh: 25)
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.prefeature2"))
+        w.setShiftHeader(division: nil, locationName: "near the 659 road")
+        let legacy = w.pendingObs(at: Date(timeIntervalSince1970: 0))
+        w.shift.obs.append(legacy)                       // logged pre-feature
+        w.setShiftHeader(division: nil, locationName: "at the saddle above Split Rock")
+        let replay = w.broadcastScript(for: legacy)
+        XCTAssertFalse(replay.contains("at the saddle above Split Rock"), replay)
+        // The pending PREVIEW, by contrast, is the current position — live applies.
+        let preview = w.broadcastScript(for: w.pendingObs(at: Date(timeIntervalSince1970: 7200)))
+        XCTAssertTrue(preview.contains("at the saddle above Split Rock"), preview)
     }
 
     func testBroadcastScriptResolvesPreviousObs() {

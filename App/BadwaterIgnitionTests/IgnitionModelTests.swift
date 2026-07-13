@@ -110,6 +110,88 @@ final class IgnitionModelTests: XCTestCase {
         XCTAssertEqual(m.effectiveRelativeHumidity, 37)
     }
 
+    // MARK: - Weather-edit tracking (staleness, red-team #3)
+
+    func testWeatherEditsStampTimestampAndPersist() {
+        let store = freshStore()
+        let a = IgnitionModel(store: store)
+        XCTAssertNil(a.weatherEditedAt)                 // untouched install
+        XCTAssertNil(a.weatherAge())
+        a.dryBulbF = 90
+        let stamped = try! XCTUnwrap(a.weatherEditedAt)
+        XCTAssertLessThan(abs(stamped.timeIntervalSinceNow), 5)
+        XCTAssertNotNil(a.weatherAge())
+        // Site-factor edits are NOT weather edits — the stamp must not move.
+        a.aspect = .west
+        a.slope = .steep
+        XCTAssertEqual(a.weatherEditedAt, stamped)
+        // The stamp survives a relaunch, so "five hours old" is knowable later.
+        XCTAssertEqual(IgnitionModel(store: store).weatherEditedAt!.timeIntervalSince1970,
+                       stamped.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testTornStoreClampDoesNotFakeAFreshWeatherEdit() {
+        // Simulate an interrupted persist: wet > dry on disk with an hours-old
+        // edit stamp. Init clamps the wet bulb (fires its didSet), but the stamp
+        // must survive as-restored — a restore is not a user edit.
+        let store = freshStore()
+        store.set(70, forKey: "ignition.dryBulbF")
+        store.set(90, forKey: "ignition.wetBulbF")        // torn: wet > dry
+        let fiveHoursAgo = Date().addingTimeInterval(-5 * 3600).timeIntervalSince1970
+        store.set(fiveHoursAgo, forKey: "ignition.weatherEditedAt")
+
+        let m = IgnitionModel(store: store)
+        XCTAssertLessThanOrEqual(m.wetBulbF, m.dryBulbF)  // clamp still applied
+        XCTAssertEqual(m.weatherEditedAt!.timeIntervalSince1970, fiveHoursAgo, accuracy: 0.001)
+        // And the store still carries the old stamp for the NEXT launch too.
+        XCTAssertEqual(store.object(forKey: "ignition.weatherEditedAt") as? Double ?? 0,
+                       fiveHoursAgo, accuracy: 0.001)
+    }
+
+    // MARK: - Clock auto-refresh (red-team #4)
+
+    private func mountain() -> Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Denver")!
+        return c
+    }
+
+    func testRefreshClockTracksWallClockUntilOverridden() {
+        let cal = mountain()
+        let dawn = cal.date(from: DateComponents(year: 2026, month: 8, day: 12, hour: 7, minute: 55))!
+        let m = IgnitionModel(store: freshStore(), now: dawn, calendar: cal)
+        XCTAssertEqual(m.timeOfDay, .night)             // pre-0800 launch
+        XCTAssertFalse(m.clockOverridden)
+
+        // Six hours later the tick re-derives the band — no more silent night +5.
+        let afternoon = cal.date(from: DateComponents(year: 2026, month: 8, day: 12, hour: 14, minute: 30))!
+        m.refreshClock(now: afternoon, calendar: cal)
+        XCTAssertEqual(m.timeOfDay, .band1400_1559)
+        XCTAssertEqual(m.month, 8)
+        XCTAssertFalse(m.clockOverridden)               // auto writes don't count as overrides
+
+        // A manual pick (forecasting tomorrow morning) stands: ticks stop moving it.
+        m.timeOfDay = .band0800_0959
+        XCTAssertTrue(m.clockOverridden)
+        m.refreshClock(now: afternoon, calendar: cal)
+        XCTAssertEqual(m.timeOfDay, .band0800_0959)
+
+        // Resuming auto snaps back to the clock.
+        m.resumeAutoClock(now: afternoon, calendar: cal)
+        XCTAssertFalse(m.clockOverridden)
+        XCTAssertEqual(m.timeOfDay, .band1400_1559)
+    }
+
+    func testManualMonthAlsoOverrides() {
+        let cal = mountain()
+        let now = cal.date(from: DateComponents(year: 2026, month: 8, day: 12, hour: 10))!
+        let m = IgnitionModel(store: freshStore(), now: now, calendar: cal)
+        m.month = 11                                     // forecasting a late-season burn
+        XCTAssertTrue(m.clockOverridden)
+        m.refreshClock(now: now, calendar: cal)
+        XCTAssertEqual(m.month, 11)                      // override respected
+    }
+
     func testHumiditySourceAndWetBulbPersist() {
         let store = freshStore()
         let a = IgnitionModel(store: store)

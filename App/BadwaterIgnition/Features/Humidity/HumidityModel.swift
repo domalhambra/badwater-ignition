@@ -11,7 +11,9 @@ import BadwaterCore
 @Observable
 final class HumidityModel {
     var dryBulbF: Int { didSet { clampWet(); persist() } }
-    var wetBulbF: Int { didSet { persist() } }
+    /// Clamped on edit too, so a wet bulb typed above the dry bulb can't produce
+    /// a physically impossible >100% RH.
+    var wetBulbF: Int { didSet { clampWet(); persist() } }
     var band: ElevationBand { didSet { persist() } }
     var alaska: Bool { didSet { persist() } }
 

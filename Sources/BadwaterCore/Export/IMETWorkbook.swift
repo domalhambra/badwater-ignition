@@ -34,6 +34,13 @@ public enum IMETExport {
         "Elevation", "Aspect", "Location",
     ]
 
+    /// Provenance footnote written two rows below the data on every sheet, so a
+    /// forwarded workbook can't be mistaken for observed or NWS-issued data. Wording
+    /// matches the Notes and NWS-spot exports.
+    public static let disclaimer =
+        "Probability of Ignition = IRPG value, app-computed (not observed, not a forecast). "
+        + "Logged with Badwater Ignition - decision-support only, not affiliated with NWS/NWCG."
+
     /// Excel time-of-day serial: fraction of a day from local midnight, in `[0, 1)`.
     /// 09:00 → 0.375, 13:00 → 0.5416666666666666.
     public static func timeSerial(of date: Date, calendar: Calendar) -> Double {
@@ -239,8 +246,12 @@ public enum IMETWorkbook {
             if let loc = r.location { cells += str("J\(R)", loc) }
             rows += "<row r=\"\(R)\">\(cells)</row>"
         }
+        // Provenance footer, one blank row below the data (row count + 4:
+        // 1 title + 1 header + N data + 1 gap).
+        let footRow = sheet.rows.count + 4
+        rows += "<row r=\"\(footRow)\">\(str("A\(footRow)", IMETExport.disclaimer))</row>"
 
-        let dim = "A1:J\(sheet.rows.count + 2)"
+        let dim = "A1:J\(footRow)"
         return header
             + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
             + "<dimension ref=\"\(dim)\"/><sheetData>\(rows)</sheetData></worksheet>"

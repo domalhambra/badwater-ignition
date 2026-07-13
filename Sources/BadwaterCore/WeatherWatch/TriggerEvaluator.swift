@@ -44,11 +44,13 @@ public enum TriggerEvaluator {
         triggers.filter { isMet($0, by: obs) == true }.map(\.id)
     }
 
-    /// The latched status of one trigger across a shift's observations, which
-    /// must be in log order (oldest first).
+    /// The latched status of one trigger across a shift's observations. The obs
+    /// are ordered chronologically here, so a back-filled reading can't distort
+    /// the first-crossed time or the "now" value regardless of log order.
     public static func crossing(of trigger: BriefedTrigger, across obs: [WeatherObs]) -> TriggerCrossing {
-        let met = obs.filter { isMet(trigger, by: $0) == true }
-        let latest = obs.last
+        let ordered = obs.sorted { $0.timestamp < $1.timestamp }
+        let met = ordered.filter { isMet(trigger, by: $0) == true }
+        let latest = ordered.last
         return TriggerCrossing(
             trigger: trigger,
             firstCrossedAt: met.first?.timestamp,

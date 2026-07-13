@@ -78,6 +78,73 @@ final class WeatherWatchModelTests: XCTestCase {
         XCTAssertEqual(b.addressee, "Diamond Mountain")
     }
 
+    func testSiteElevationDrivesSlungBandAndStampsElevation() {
+        let ign = IgnitionModel(store: fresh("watch.siteelev.ign"))
+        ign.rhSource = .wetBulb
+        ign.dryBulbF = 80
+        ign.wetBulbF = 65
+        ign.elevationBand = .band1                 // stale band left on the Ignition tab
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.siteelev"))
+
+        // No site elevation yet → falls back to the Ignition tab's band.
+        XCTAssertEqual(w.pendingObs().humidity?.elevationBand, .band1)
+
+        // Entering a high site elevation re-bands the sling RH to THAT elevation.
+        w.siteElevationFeet = 9000
+        let expectedBand = ElevationBand.forElevation(feetMSL: 9000)   // band6
+        let obs = w.pendingObs()
+        XCTAssertEqual(obs.humidity?.elevationBand, expectedBand)
+        // The frozen RH and the PIG estimate agree (both use the elevation band).
+        let expectedRH = Psychrometrics.compute(dryBulbF: 80, wetBulbF: 65, band: expectedBand).relativeHumidity
+        XCTAssertEqual(obs.humidity?.relativeHumidity, expectedRH)
+        XCTAssertEqual(obs.value(of: .relativeHumidity), expectedRH)
+
+        // Logging with no explicit elevation stamps the sticky site elevation.
+        XCTAssertEqual(w.logObs().elevationFeet, 9000)
+    }
+
+    func testSiteElevationPersistsAndClears() {
+        let store = fresh("watch.siteelev.persist")
+        let ign = ignition(dry: 80, rh: 15)
+        let a = WeatherWatchModel(ignition: ign, store: store)
+        a.siteElevationFeet = 7200
+        XCTAssertEqual(WeatherWatchModel(ignition: ign, store: store).siteElevationFeet, 7200)
+        // Clearing removes the key (a fresh model reads it back as nil, not 0).
+        a.siteElevationFeet = nil
+        XCTAssertNil(WeatherWatchModel(ignition: ign, store: store).siteElevationFeet)
+    }
+
+    func testLatestFollowsTimestampNotAppendOrder() {
+        let w = WeatherWatchModel(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.latest"))
+        let t0 = Date(timeIntervalSince1970: 0)
+        let later = w.logObs(at: t0.addingTimeInterval(3600))   // 0100
+        _ = w.logObs(at: t0)                                    // 0000, back-filled AFTER
+        XCTAssertEqual(w.latest?.id, later.id)                  // chronological max, not the tail
+    }
+
+    func testBroadcastPreviousIsChronological() {
+        let ign = ignition(dry: 60, rh: 25)
+        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.prev"))
+        w.addressee = "Diamond Mountain"
+        let t0 = Date(timeIntervalSince1970: 0)
+
+        // Log the 0100 first, then BACK-FILL the 0000 after it.
+        ign.dryBulbF = 65; ign.relativeHumidity = 20
+        let later = w.logObs(at: t0.addingTimeInterval(3600))   // 65 / 20
+        ign.dryBulbF = 60; ign.relativeHumidity = 25
+        let earlier = w.logObs(at: t0)                          // 60 / 25 (precedes in time)
+
+        // The 0100's predecessor is the chronologically-earlier 0000, though it was
+        // appended later: deltas 65−60 = up 5, 20−25 = down 5.
+        let script = w.broadcastScript(for: later)
+        XCTAssertTrue(script.contains("Dry Bulb 65 degrees, up 5"), script)
+        XCTAssertTrue(script.contains("RH 20%, down 5"), script)
+        // The earliest obs has no predecessor → no deltas.
+        let firstScript = w.broadcastScript(for: earlier)
+        XCTAssertFalse(firstScript.contains(", up"))
+        XCTAssertFalse(firstScript.contains(", down"))
+    }
+
     func testBroadcastScriptResolvesPreviousObs() {
         let ign = ignition(dry: 80, rh: 15)
         let w = WeatherWatchModel(ignition: ign, store: fresh("watch.script"))

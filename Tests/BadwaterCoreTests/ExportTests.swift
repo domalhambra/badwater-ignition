@@ -108,6 +108,23 @@ final class ExportTests: XCTestCase {
         XCTAssertNil(d2.range(of: Data("r=\"J3\"".utf8)))     // no location cell
     }
 
+    func testWorkbookCarriesProvenanceFooter() {
+        let cal = denver()
+        let ts = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 9))!
+        let data = IMETWorkbook.build(from: Shift(started: ts, obs: [
+            obs(cal: cal, ts: ts, dry: 60, depression: nil, rh: 30, wind: nil, elev: nil, loc: nil)
+        ]), calendar: cal)
+        // The footnote is written verbatim in column A (no XML-special chars to escape),
+        // two rows below the single data row (row 3 → footer row 5).
+        XCTAssertNotNil(data.range(of: Data(IMETExport.disclaimer.utf8)))
+        XCTAssertTrue(data.range(of: Data("<row r=\"5\"><c r=\"A5\"".utf8)) != nil)
+        XCTAssertTrue(IMETExport.disclaimer.contains("not observed, not a forecast"))
+        XCTAssertTrue(IMETExport.disclaimer.hasSuffix("not affiliated with NWS/NWCG."))
+        // Even a header-only (empty) shift still carries the footnote.
+        let empty = IMETWorkbook.build(from: Shift(started: ts), calendar: cal)
+        XCTAssertNotNil(empty.range(of: Data(IMETExport.disclaimer.utf8)))
+    }
+
     func testMultiDayGrouping() {
         let cal = denver()
         let d1 = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 23, minute: 30))!

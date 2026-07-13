@@ -23,7 +23,9 @@ final class IgnitionModel {
     /// RH typed directly (Kestrel). Used when ``rhSource`` is ``RHSource/direct``.
     var relativeHumidity: Int { didSet { persist() } }
     /// Wet-bulb temperature (°F) for the sling-psychrometer RH derivation.
-    var wetBulbF: Int { didSet { persist() } }
+    /// Clamped on edit too (not only when the dry bulb drops), so a wet bulb typed
+    /// above the dry bulb can't yield a physically impossible >100% RH.
+    var wetBulbF: Int { didSet { clampWet(); persist() } }
     /// Elevation band supplying the station pressure for the RH derivation.
     var elevationBand: ElevationBand { didSet { persist() } }
     /// Whether RH is typed directly or derived from the wet bulb.

@@ -1,6 +1,6 @@
 import Foundation
 
-/// One row of the IMET sheet (columns A–J), already reduced to display values.
+/// One row of the IMET sheet (columns A–K), already reduced to display values.
 /// `nil` optionals render as a blank cell.
 public struct IMETRow: Equatable, Sendable {
     public let timeSerial: Double      // A — never blank
@@ -13,6 +13,7 @@ public struct IMETRow: Equatable, Sendable {
     public let elevationFeet: Int?     // H
     public let aspect: String          // I
     public let location: String?       // J — GeoPoint.rendered
+    public let note: String?           // K — operator caveat, blank when none
 }
 
 /// One worksheet = one operational day.
@@ -27,11 +28,13 @@ public struct IMETSheet: Equatable, Sendable {
 /// lands on the wrong sheet or hour.
 public enum IMETExport {
 
-    /// IMET column headers (F/G corrected from the template's duplicate "Shaded").
+    /// IMET column headers (F/G corrected from the template's duplicate "Shaded";
+    /// K added for per-obs operator caveats so a flagged reading stays flagged
+    /// after the workbook is forwarded).
     public static let headers = [
         "Time", "Dry Bulb", "Wet Bulb", "RH (%)", "Wind (MPH)",
         "Probability of Ignition (Unshaded) (%)", "Probability of Ignition (Shaded) (%)",
-        "Elevation", "Aspect", "Location",
+        "Elevation", "Aspect", "Location", "Notes",
     ]
 
     /// Provenance footnote written two rows below the data on every sheet, so a
@@ -63,7 +66,11 @@ public enum IMETExport {
             pigShaded: obs.estimate.shaded.probabilityOfIgnition,
             elevationFeet: obs.elevationFeet,
             aspect: obs.estimate.input.aspect.displayName,
-            location: obs.location?.rendered)
+            location: obs.location?.rendered,
+            note: obs.note.flatMap { n in
+                let t = n.trimmingCharacters(in: .whitespacesAndNewlines)
+                return t.isEmpty ? nil : t
+            })
     }
 
     /// Group a shift's obs into one sheet per local day (ascending; rows
@@ -244,6 +251,7 @@ public enum IMETWorkbook {
             if let elev = r.elevationFeet { cells += num("H\(R)", elev) }
             cells += str("I\(R)", r.aspect)
             if let loc = r.location { cells += str("J\(R)", loc) }
+            if let note = r.note { cells += str("K\(R)", note) }
             rows += "<row r=\"\(R)\">\(cells)</row>"
         }
         // Provenance footer, one blank row below the data (row count + 4:
@@ -251,7 +259,7 @@ public enum IMETWorkbook {
         let footRow = sheet.rows.count + 4
         rows += "<row r=\"\(footRow)\">\(str("A\(footRow)", IMETExport.disclaimer))</row>"
 
-        let dim = "A1:J\(footRow)"
+        let dim = "A1:K\(footRow)"
         return header
             + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
             + "<dimension ref=\"\(dim)\"/><sheetData>\(rows)</sheetData></worksheet>"

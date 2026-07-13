@@ -35,7 +35,10 @@ public enum NotesExport {
         }
 
         lines.append("")
-        lines.append(headerRow)   // tab-separated column labels
+        // The Note column exists only when some obs actually carries a note, so
+        // a note-free shift keeps the exact historical layout.
+        let withNotes = sorted.contains { sanitizedNote($0.note) != nil }
+        lines.append(withNotes ? headerRow + "\tNote" : headerRow)
 
         var currentMD = monthDay(of: sorted[0].timestamp, calendar: calendar)
         for (i, obs) in sorted.enumerated() {
@@ -44,7 +47,7 @@ public enum NotesExport {
                 lines.append("-- \(md) --")   // divider when the shift crosses local midnight
                 currentMD = md
             }
-            lines.append(dataRow(for: obs, calendar: calendar))
+            lines.append(dataRow(for: obs, calendar: calendar, withNotes: withNotes))
         }
 
         lines.append("")
@@ -66,12 +69,12 @@ public enum NotesExport {
     /// dry − wet-bulb-depression when the obs was slung, else `"--"` (same rule as
     /// ``IMETExport/row(from:calendar:)``). Wind uses ``Wind/imetCell`` (speed-first,
     /// full-word direction), matching the spreadsheet column.
-    private static func dataRow(for obs: WeatherObs, calendar: Calendar) -> String {
+    private static func dataRow(for obs: WeatherObs, calendar: Calendar, withNotes: Bool) -> String {
         let dry = obs.estimate.input.dryBulbF
         let wet = obs.humidity.map { "\(dry - $0.wetBulbDepressionF)" } ?? "--"
         let pig = "\(obs.estimate.unshaded.probabilityOfIgnition)/\(obs.estimate.shaded.probabilityOfIgnition)"
         let wind = obs.wind?.imetCell ?? "--"
-        let cells = [
+        var cells = [
             hhmm(of: obs.timestamp, calendar: calendar),
             "\(dry)",
             wet,
@@ -79,7 +82,19 @@ public enum NotesExport {
             pig,
             wind,
         ]
+        if withNotes { cells.append(sanitizedNote(obs.note) ?? "--") }
         return cells.joined(separator: "\t")
+    }
+
+    /// A note flattened for the tab grid: tabs/newlines become spaces (either
+    /// would tear the row apart), whitespace-only collapses to nil.
+    static func sanitizedNote(_ note: String?) -> String? {
+        guard let note else { return nil }
+        let flat = note
+            .replacingOccurrences(of: "\t", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespaces)
+        return flat.isEmpty ? nil : flat
     }
 
     // MARK: - Header

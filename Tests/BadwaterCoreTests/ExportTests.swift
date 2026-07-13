@@ -106,6 +106,24 @@ final class ExportTests: XCTestCase {
         XCTAssertNil(d2.range(of: Data("r=\"C3\"".utf8)))     // no wet bulb cell
         XCTAssertNil(d2.range(of: Data("r=\"E3\"".utf8)))     // no wind cell
         XCTAssertNil(d2.range(of: Data("r=\"J3\"".utf8)))     // no location cell
+        XCTAssertNil(d2.range(of: Data("r=\"K3\"".utf8)))     // no note cell
+    }
+
+    func testWorkbookNotesColumn() {
+        let cal = denver()
+        let ts = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 9))!
+        var flagged = obs(cal: cal, ts: ts, dry: 60, depression: nil, rh: 30, wind: nil, elev: nil, loc: nil)
+        flagged.note = "  sun on thermometer <suspect>  "
+        let data = IMETWorkbook.build(from: Shift(started: ts, obs: [flagged]), calendar: cal)
+        func has(_ s: String) -> Bool { data.range(of: Data(s.utf8)) != nil }
+        XCTAssertTrue(has("Notes"))                                          // K header
+        XCTAssertTrue(has("<c r=\"K3\""))                                    // note lands in K
+        XCTAssertTrue(has("sun on thermometer &lt;suspect&gt;"))             // trimmed + XML-escaped
+        // A whitespace-only note collapses to no cell at all.
+        var blank = obs(cal: cal, ts: ts, dry: 60, depression: nil, rh: 30, wind: nil, elev: nil, loc: nil)
+        blank.note = "   "
+        let d2 = IMETWorkbook.build(from: Shift(started: ts, obs: [blank]), calendar: cal)
+        XCTAssertNil(d2.range(of: Data("r=\"K3\"".utf8)))
     }
 
     func testWorkbookCarriesProvenanceFooter() {
@@ -146,8 +164,11 @@ final class ExportTests: XCTestCase {
         XCTAssertFalse(json.contains("\"wind\""))
         XCTAssertFalse(json.contains("elevationFeet"))
         XCTAssertFalse(json.contains("\"location\""))
+        XCTAssertFalse(json.contains("spokenLocation"))
+        XCTAssertFalse(json.contains("broadcastText"))
         let back = try JSONDecoder().decode(WeatherObs.self, from: Data(json.utf8))
         XCTAssertNil(back.wind); XCTAssertNil(back.elevationFeet); XCTAssertNil(back.location)
+        XCTAssertNil(back.spokenLocation); XCTAssertNil(back.broadcastText)
         let sh = Shift(started: Date(timeIntervalSince1970: 0), obs: [o])
         XCTAssertFalse(String(data: try JSONEncoder().encode(sh), encoding: .utf8)!.contains("division"))
     }

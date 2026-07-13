@@ -67,6 +67,32 @@ final class NotesExportTests: XCTestCase {
                       "expected Kestrel row not found in:\n\(out)")
     }
 
+    // MARK: - Note column (only when a note exists)
+
+    func testNoteColumnAppearsOnlyWhenNoted() {
+        let cal = denver()
+        let ts = cal.date(from: DateComponents(year: 2026, month: 8, day: 12, hour: 10))!
+        let ts2 = cal.date(from: DateComponents(year: 2026, month: 8, day: 12, hour: 11))!
+        var flagged = obs(cal: cal, ts: ts, dry: 70, depression: nil, rh: 25,
+                          wind: nil, elev: nil, loc: nil, aspect: .south)
+        flagged.note = " sun on\tthermometer\nsuspect "   // tab/newline must not tear the grid
+        let plain = obs(cal: cal, ts: ts2, dry: 72, depression: nil, rh: 24,
+                        wind: nil, elev: nil, loc: nil, aspect: .south)
+
+        let out = NotesExport.plainText(from: Shift(started: ts, obs: [flagged, plain]), calendar: cal)
+        XCTAssertTrue(out.contains("\nTime\tTemp\tWet\tRH\tPIG u/s\tWind\tNote\n"))
+        XCTAssertTrue(out.contains("\tsun on thermometer suspect"))   // flattened, trimmed
+        XCTAssertTrue(out.contains("1100\t72\t--\t24"))
+        // The note-free obs pads its Note cell with "--" so the column stays aligned.
+        let plainRow = out.split(separator: "\n").first { $0.hasPrefix("1100\t") }
+        XCTAssertTrue(plainRow?.hasSuffix("\t--") == true, "row was: \(plainRow ?? "")")
+
+        // No notes anywhere -> the historical 6-column layout, byte-identical.
+        let bare = NotesExport.plainText(from: Shift(started: ts, obs: [plain]), calendar: cal)
+        XCTAssertTrue(bare.contains("\nTime\tTemp\tWet\tRH\tPIG u/s\tWind\n"))
+        XCTAssertFalse(bare.contains("\tNote"))
+    }
+
     // MARK: - Midnight divider
 
     func testMidnightDivider() {

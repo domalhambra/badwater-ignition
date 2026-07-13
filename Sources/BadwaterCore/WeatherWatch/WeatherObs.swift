@@ -18,6 +18,9 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
     /// The briefed triggers this observation met, frozen at log time so the
     /// record stays re-evaluation-proof if triggers change later.
     public let crossedTriggerIDs: [UUID]
+    /// Operator caveat for a suspect reading ("sun on thermometer", "one-handed
+    /// sling"). Carried into the exports so a flagged reading never looks
+    /// identical to a trusted one downstream.
     public var note: String?
 
     // Observed metadata for the IMET export (not computed by the app). All
@@ -29,6 +32,16 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
     public var elevationFeet: Int?
     /// GPS location of the observation (IMET column J).
     public var location: GeoPoint?
+    /// The location phrase frozen at log time, exactly as spoken on the net
+    /// (e.g. "near the 659 road"). ``RadioScript`` diffs it against the next
+    /// obs to decide whether the site must be re-announced. `nil` on pre-feature
+    /// records — treated as unknown, so the first broadcast after an upgrade
+    /// re-announces (the safe direction).
+    public var spokenLocation: String?
+    /// The broadcast script rendered and frozen when this obs was logged — the
+    /// evidentiary record of what went out over the air. Replaying a logged obs
+    /// returns this text even if a neighboring obs is later edited or deleted.
+    public var broadcastText: String?
 
     public init(
         id: UUID = UUID(),
@@ -40,7 +53,9 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
         note: String? = nil,
         wind: Wind? = nil,
         elevationFeet: Int? = nil,
-        location: GeoPoint? = nil
+        location: GeoPoint? = nil,
+        spokenLocation: String? = nil,
+        broadcastText: String? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -52,6 +67,8 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
         self.wind = wind
         self.elevationFeet = elevationFeet
         self.location = location
+        self.spokenLocation = spokenLocation
+        self.broadcastText = broadcastText
     }
 
     /// The value of a metric for this observation, or `nil` when it isn't

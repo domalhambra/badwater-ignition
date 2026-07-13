@@ -11,9 +11,12 @@ import Foundation
 ///
 /// Deltas ("up 5", "down 3") compare against the previous broadcast obs; the
 /// first obs of a shift speaks no deltas. The location sentence (site,
-/// elevation, aspect) is spoken only on the first broadcast, when elevation or
-/// aspect changed since the previous obs, or when `forceLocation` is set (site
-/// renamed mid-shift, operator change, etc.).
+/// elevation, slope, aspect) is spoken on the first broadcast and whenever the
+/// site actually changed — the spoken-location text, elevation, aspect, or
+/// slope differs from the previous obs. Two explicit operator overrides exist:
+/// `forceLocation` re-announces an unchanged site, and `suppressLocation` is
+/// the operator's "location unchanged" assertion — it always wins, so a typo
+/// fix in the location text doesn't force a spurious re-announcement.
 public enum RadioScript {
 
     public static func render(
@@ -22,7 +25,8 @@ public enum RadioScript {
         spokenLocation: String?,
         current: WeatherObs,
         previous: WeatherObs?,
-        forceLocation: Bool = false
+        forceLocation: Bool = false,
+        suppressLocation: Bool = false
     ) -> String {
         var sentences: [String?] = []
 
@@ -33,7 +37,9 @@ public enum RadioScript {
             ? "Stand by for your \(timeLabel) Weather observations."
             : "\(name), stand by for your \(timeLabel) Weather observations.")
 
-        if shouldSpeakLocation(current: current, previous: previous, forceLocation: forceLocation) {
+        if !suppressLocation,
+           shouldSpeakLocation(current: current, previous: previous,
+                               spokenLocation: spokenLocation, forceLocation: forceLocation) {
             sentences.append(locationSentence(spokenLocation: spokenLocation, obs: current))
         }
 
@@ -56,24 +62,41 @@ public enum RadioScript {
 
     // MARK: - Sentence builders
 
-    /// The site is re-announced on the first broadcast, on any elevation or
-    /// aspect change, or on demand. GPS micro-movement deliberately doesn't count.
-    static func shouldSpeakLocation(current: WeatherObs, previous: WeatherObs?, forceLocation: Bool) -> Bool {
+    /// The site is re-announced on the first broadcast, whenever the spoken
+    /// location text / elevation / aspect / slope changed, or on demand. GPS
+    /// micro-movement deliberately doesn't count. A `nil` previous spoken
+    /// location (pre-feature record) counts as changed, so the first broadcast
+    /// after an upgrade re-announces rather than silently omitting a move.
+    static func shouldSpeakLocation(
+        current: WeatherObs, previous: WeatherObs?,
+        spokenLocation: String?, forceLocation: Bool
+    ) -> Bool {
         guard let previous else { return true }
         if forceLocation { return true }
         return previous.elevationFeet != current.elevationFeet
             || previous.estimate.input.aspect != current.estimate.input.aspect
+            || previous.estimate.input.slope != current.estimate.input.slope
+            || normalized(previous.spokenLocation) != normalized(spokenLocation)
+    }
+
+    /// Trimmed, empty-collapsed-to-nil form used for the location-text diff, so
+    /// stray whitespace never causes a phantom re-announcement.
+    static func normalized(_ location: String?) -> String? {
+        guard let t = location?.trimmingCharacters(in: .whitespaces), !t.isEmpty else { return nil }
+        return t
     }
 
     /// `"Taken {loc} at an elevation of {10,300} feet, on a Western aspect."` —
     /// the location phrase carries its own preposition (e.g. "near the 659 road",
     /// "at the lookout") and is spoken verbatim after "Taken"; nil parts drop out
     /// gracefully. The app never injects a preposition, so the operator phrases
-    /// the location exactly as they want it read on the net.
+    /// the location exactly as they want it read on the net. Steep terrain
+    /// (31%+) is called out — "on a steep Western aspect" — gentle slope stays
+    /// silent, matching the dictated field script.
     static func locationSentence(spokenLocation: String?, obs: WeatherObs) -> String {
         var s = "Taken"
         var hasDetail = false
-        if let loc = spokenLocation?.trimmingCharacters(in: .whitespaces), !loc.isEmpty {
+        if let loc = normalized(spokenLocation) {
             s += " \(loc)"
             hasDetail = true
         }
@@ -82,7 +105,11 @@ public enum RadioScript {
             hasDetail = true
         }
         let aspect = obs.estimate.input.aspect
-        let tail = "\(article(for: aspect)) \(adjective(for: aspect)) aspect."
+        let steep = obs.estimate.input.slope == .steep
+        // "steep" takes over the article slot: "a steep Eastern aspect", not "an".
+        let art = steep ? "a" : article(for: aspect)
+        let descriptor = steep ? "steep \(adjective(for: aspect))" : adjective(for: aspect)
+        let tail = "\(art) \(descriptor) aspect."
         s += hasDetail ? ", on \(tail)" : " on \(tail)"
         return s
     }

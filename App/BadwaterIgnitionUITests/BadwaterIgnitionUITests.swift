@@ -50,4 +50,21 @@ final class BadwaterIgnitionUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["derived-rh"].exists)
         XCTAssertTrue(app.staticTexts["result-Unshaded"].exists)
     }
+
+    func testWatchTabLogsAnObservation() {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.tabBars.buttons["Watch"].tap()
+        // Fresh shift shows the empty state until the first log.
+        XCTAssertTrue(app.otherElements["watch-empty"].waitForExistence(timeout: 5))
+
+        // Logging freezes the current reading into the shift: the hero (both PIG
+        // results + the radio line) appears and the empty state goes away.
+        app.buttons["log-observation"].tap()
+        XCTAssertTrue(app.staticTexts["result-Unshaded"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["result-Shaded"].exists)
+        XCTAssertTrue(app.staticTexts["radio-line"].exists)
+        XCTAssertFalse(app.otherElements["watch-empty"].exists)
+    }
 }

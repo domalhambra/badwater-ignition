@@ -181,6 +181,12 @@ final class WeatherWatchModel {
         return age > threshold
     }
 
+    /// Assert the pending weather is still current (the "Mark current" tap) —
+    /// clears the staleness warning without a fabricated edit.
+    func confirmPendingWeatherCurrent(at now: Date = Date()) {
+        ignition.confirmWeatherCurrent(now: now)
+    }
+
     /// Set the IMET export header (division / location name), sticky per shift.
     func setShiftHeader(division: String?, locationName: String?) {
         shift.division = division

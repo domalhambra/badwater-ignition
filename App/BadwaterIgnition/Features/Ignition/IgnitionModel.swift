@@ -40,6 +40,11 @@ final class IgnitionModel {
     /// hand-edited. Persisted, so "these numbers are five hours old" survives a
     /// relaunch. Watch uses it to warn before logging against stale weather.
     private(set) var weatherEditedAt: Date?
+    /// When the operator last asserted the weather is still current *without*
+    /// re-typing it — the "Mark current" tap. Freshness (``weatherAge(at:)``) is
+    /// the later of this and ``weatherEditedAt``, so re-confirming an unchanged
+    /// reading clears a staleness warning without faking an edit.
+    private(set) var weatherConfirmedAt: Date?
     /// True once the operator manually picks a month or time of day — the
     /// clock auto-refresh then stands down until ``resumeAutoClock(now:calendar:)``.
     /// Session-scoped on purpose: a fresh launch re-derives from the clock.
@@ -69,6 +74,8 @@ final class IgnitionModel {
         elevationDelta = ElevationDelta(rawValue: store.string(forKey: Keys.elevation) ?? "") ?? .level
         let storedWeatherEdit = store.object(forKey: Keys.weatherEdited) as? Double
         weatherEditedAt = storedWeatherEdit.map { Date(timeIntervalSince1970: $0) }
+        weatherConfirmedAt = (store.object(forKey: Keys.weatherConfirmed) as? Double)
+            .map { Date(timeIntervalSince1970: $0) }
         clampWet()
         // clampWet() runs after self is fully initialized, so a clamp on torn
         // persisted data (wet > dry after an interrupted persist) goes through
@@ -101,10 +108,20 @@ final class IgnitionModel {
         refreshClock(now: now, calendar: calendar)
     }
 
-    /// Age of the last weather edit; nil when the inputs have never been touched
-    /// on this install (first launch, defaults still showing).
+    /// Age of the freshest weather assertion — the later of the last edit and the
+    /// last explicit "still current" confirmation; nil when neither has happened
+    /// (first launch, defaults still showing).
     func weatherAge(at now: Date = Date()) -> TimeInterval? {
-        weatherEditedAt.map { now.timeIntervalSince($0) }
+        guard let freshest = [weatherEditedAt, weatherConfirmedAt].compactMap({ $0 }).max() else { return nil }
+        return now.timeIntervalSince(freshest)
+    }
+
+    /// Assert the current weather reading is still good without re-typing it —
+    /// the "Mark current" affordance that clears a staleness warning. Does not
+    /// move ``weatherEditedAt`` (nothing was actually re-measured).
+    func confirmWeatherCurrent(now: Date = Date()) {
+        weatherConfirmedAt = now
+        store.set(now.timeIntervalSince1970, forKey: Keys.weatherConfirmed)
     }
 
     private func markClockOverridden() {
@@ -169,6 +186,7 @@ final class IgnitionModel {
         static let slope = "ignition.slope"
         static let elevation = "ignition.elevationDelta"
         static let weatherEdited = "ignition.weatherEditedAt"
+        static let weatherConfirmed = "ignition.weatherConfirmedAt"
     }
 }
 

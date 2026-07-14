@@ -246,6 +246,9 @@ final class WeatherWatchModelTests: XCTestCase {
         let inFiveHours = Date().addingTimeInterval(5 * 3600)
         XCTAssertTrue(w.isPendingWeatherStale(at: inFiveHours))
         XCTAssertNotNil(w.pendingWeatherAge(at: inFiveHours))
+        // "Mark current" clears the warning without a fabricated edit.
+        w.confirmPendingWeatherCurrent(at: inFiveHours)
+        XCTAssertFalse(w.isPendingWeatherStale(at: inFiveHours))
     }
 
     func testPreFeatureObsRendersLiveScript() {

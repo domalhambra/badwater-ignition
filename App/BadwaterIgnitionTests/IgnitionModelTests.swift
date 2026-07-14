@@ -148,6 +148,22 @@ final class IgnitionModelTests: XCTestCase {
                        fiveHoursAgo, accuracy: 0.001)
     }
 
+    func testConfirmWeatherCurrentRefreshesAgeWithoutEditAndPersists() {
+        let store = freshStore()
+        let m = IgnitionModel(store: store)
+        m.dryBulbF = 90                                   // stamps weatherEditedAt ~ now
+        let threeHoursOn = Date().addingTimeInterval(3 * 3600)
+        XCTAssertGreaterThan(m.weatherAge(at: threeHoursOn)!, 2 * 3600)   // stale after 3h
+
+        m.confirmWeatherCurrent(now: threeHoursOn)        // "still current", no re-typing
+        XCTAssertLessThan(m.weatherAge(at: threeHoursOn)!, 1)             // fresh again
+        XCTAssertEqual(m.dryBulbF, 90)                    // and the reading itself is unchanged
+
+        // The confirmation persists, so freshness survives a relaunch.
+        let reloaded = IgnitionModel(store: store)
+        XCTAssertLessThan(reloaded.weatherAge(at: threeHoursOn)!, 1)
+    }
+
     // MARK: - Clock auto-refresh (red-team #4)
 
     private func mountain() -> Calendar {

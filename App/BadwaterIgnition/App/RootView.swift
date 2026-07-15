@@ -40,7 +40,7 @@ struct RootView: View {
             .tag(Tab.humidity)
 
             NavigationStack {
-                WatchView(model: watch)
+                WatchView(model: watch, ignition: ignition)
             }
             .tabItem { Label("Watch", systemImage: "binoculars") }
             .tag(Tab.watch)

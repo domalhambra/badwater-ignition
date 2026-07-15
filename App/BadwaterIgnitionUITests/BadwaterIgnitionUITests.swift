@@ -67,4 +67,16 @@ final class BadwaterIgnitionUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["radio-line"].exists)
         XCTAssertFalse(app.otherElements["watch-empty"].exists)
     }
+
+    func testWatchCaptureCardIsPresent() {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.tabBars.buttons["Watch"].tap()
+        // The pending capture card is always available — note field, dry-bulb
+        // stepper, and the live PIG preview — so a reading can be built and logged.
+        XCTAssertTrue(app.textFields["obs-note"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.otherElements["Dry bulb"].exists)
+        XCTAssertTrue(app.staticTexts["pending-pig"].exists)
+    }
 }

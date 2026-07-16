@@ -99,8 +99,14 @@ they update live.
 
 ## 4. Screens
 
-Two tabs. Each is an **instrument, not a form** — no "Calculate" button; results
-update on every input change.
+Three tabs — **Humidity, Ignition, Watch** (left to right), launching on
+**Ignition** (`App/BadwaterIgnition/App/RootView.swift`). Each is an
+**instrument, not a form** — no "Calculate" button; results update on every
+input change. All three tabs share a single `IgnitionModel`, so the weather
+Watch logs is the same weather Ignition shows.
+
+> A pending workflow restructure (pinned result bar, grouped input sections,
+> unified status strip) is specified in `docs/UX_WORKFLOW.md`.
 
 ### 4.1 Ignition (PIG / FFM)
 Top-to-bottom:
@@ -133,6 +139,18 @@ Top-to-bottom:
 6. **"Use in ignition calc"** — teal button; pushes RH into the Ignition tab and
    switches to it. Sling psychrometer → RH → PIG in one pipeline, no re-typing.
 
+### 4.3 Watch (shift observation log)
+1. **Header** — "Watch" + the shift's obs count (`IRPG PMS 461` before the
+   first log).
+2. **Latest-reading hero** — the last logged obs: time, both `ResultCard`s,
+   and a radio-ready broadcast line ("Wx obs 1430, temp 90, RH 8, …").
+3. **Pending capture card** — weather-freshness row, obs-time steppers, the
+   shared weather inputs (bound to the same `IgnitionModel` as Ignition), an
+   optional note, and a live PIG preview.
+4. **Log bar** — fixed at the bottom; freezes the pending reading into the
+   shift. Site/wind controls, the broadcast panel, trends, and the shift-log
+   list are planned follow-ons (M2–M6).
+
 ---
 
 ## 5. Components (built)
@@ -162,7 +180,9 @@ Top-to-bottom:
    Keep it minimal; respect Reduce Motion.
 4. **"Book mode" (v2 candidate)** — render the actual IRPG table with the
    selected cells highlighted; the app *becomes* the pocket-guide page.
-5. **Watch / widget (v2)** — glanceable PIG during a weather obs.
+5. **Apple Watch app / widget (v2)** — glanceable PIG on the wrist or home
+   screen during a weather obs. (Distinct from the shipped **Watch tab**,
+   §4.3, which is the phone's shift observation log.)
 
 ---
 

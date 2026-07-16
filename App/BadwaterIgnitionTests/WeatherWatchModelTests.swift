@@ -3,7 +3,7 @@ import BadwaterCore
 @testable import BadwaterIgnition
 
 /// View-model tests for Weather Watch. These run in the simulator (Observation +
-/// UserDefaults); the pure trigger/obs logic is covered by WeatherWatchTests in
+/// UserDefaults); the pure observation logic is covered by WeatherWatchTests in
 /// BadwaterCore on Linux CI.
 final class WeatherWatchModelTests: XCTestCase {
 
@@ -22,17 +22,14 @@ final class WeatherWatchModelTests: XCTestCase {
         return m
     }
 
-    func testLogFreezesLiveInputsAndTriggers() {
+    func testLogFreezesLiveInputs() {
         let w = WeatherWatchModel(ignition: ignition(dry: 90, rh: 8), store: fresh("watch.log"))
-        w.addTrigger(BriefedTrigger(metric: .relativeHumidity, direction: .fallsToAtOrBelow, value: 20))
 
         w.logObs()
         XCTAssertEqual(w.shift.obs.count, 1)
         let obs = try! XCTUnwrap(w.latest)
         XCTAssertEqual(obs.value(of: .temperature), 90)          // frozen dry bulb
         XCTAssertEqual(obs.value(of: .relativeHumidity), 8)      // direct RH used
-        XCTAssertEqual(obs.crossedTriggerIDs, [w.triggers[0].id]) // RH 8 ≤ 20 frozen at log time
-        XCTAssertEqual(w.crossedCount, 1)
     }
 
     func testShiftPersistsAcrossInstances() {

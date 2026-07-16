@@ -2,8 +2,10 @@ import SwiftUI
 import Combine
 import BadwaterCore
 
-/// The Ignition screen: inputs at top, the IRPG calculation chain in the
-/// middle, and both shaded/unshaded Probability of Ignition results with a
+/// The Ignition screen. A pinned PIG summary keeps the result on screen at all
+/// times; below it the inputs are chunked into the IRPG worksheet's own sections
+/// — Weather (Table A), Calendar · Time (Tables B/C/D), and Site (corrections) —
+/// followed by the calculation chain and both shaded/unshaded results with a
 /// plain-language interpretation. Everything updates live.
 struct IgnitionView: View {
     @Bindable var model: IgnitionModel
@@ -14,51 +16,16 @@ struct IgnitionView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Metric.cardSpacing) {
+            VStack(alignment: .leading, spacing: Metric.sectionSpacing) {
                 header
-
-                // Fast inputs
-                ChipPicker(title: "Humidity source", options: RHSource.allCases,
-                           selection: $model.rhSource, label: \.displayName)
-                HStack(spacing: 10) {
-                    StepperCard(label: "Dry bulb", unit: "°F",
-                                value: $model.dryBulbF, range: 10...130)
-                    if model.rhSource == .direct {
-                        StepperCard(label: "Rel. humidity", unit: "%",
-                                    value: $model.relativeHumidity, range: 0...100)
-                    } else {
-                        StepperCard(label: "Wet bulb", unit: "°F",
-                                    value: $model.wetBulbF, range: 10...130)
-                    }
-                }
-                if model.rhSource == .wetBulb {
-                    ChipPicker(title: "Elevation band  ·  \(Int(model.elevationBand.stationPressureInHg)) inHg",
-                               options: ElevationBand.allCases, selection: $model.elevationBand,
-                               label: \.conusLabel)
-                    derivedHumidity
-                }
-
-                // Site factors
-                monthPicker
-                ChipPicker(title: "Time of day", options: TimeOfDay.allCases,
-                           selection: $model.timeOfDay, label: \.label)
-                if model.clockOverridden { clockOverrideNotice }
-                HStack(alignment: .top, spacing: 10) {
-                    ChipPicker(title: "Aspect", options: Aspect.allCases,
-                               selection: $model.aspect, label: \.rawValue)
-                    ChipPicker(title: "Slope", options: Slope.allCases,
-                               selection: $model.slope, label: \.displayName)
-                }
-                ChipPicker(title: "Elevation vs. weather site", options: ElevationDelta.allCases,
-                           selection: $model.elevationDelta, label: \.displayName)
-
-                chainStrip
-                results
-                interpretation
-                disclaimer
+                weatherSection
+                calendarTimeSection
+                siteSection
+                resultsSection
             }
             .padding(Metric.screenPadding)
         }
+        .safeAreaInset(edge: .top, spacing: 0) { summaryBar }
         .background(BadwaterColor.background)
         .navigationTitle("Ignition")
         .onReceive(clockTick) { _ in model.refreshClock() }
@@ -67,20 +34,23 @@ struct IgnitionView: View {
         }
     }
 
-    /// Shown only while a manual month/time override is standing in for the
-    /// clock — the "visible flag" so a stale night/day rule is never silent.
-    private var clockOverrideNotice: some View {
-        Button {
-            model.resumeAutoClock()
-        } label: {
-            Label("Month/time set manually — tap to resume tracking the clock",
-                  systemImage: "clock.arrow.circlepath")
-                .font(BadwaterFont.labelSmall)
-                .foregroundStyle(BadwaterColor.accent)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("clock-override-notice")
+    // MARK: - Pinned summary
+
+    /// The always-visible headline result, pinned above the scroll so the PIG is
+    /// never below the fold no matter how far down the inputs the operator is.
+    private var summaryBar: some View {
+        let e = model.estimate
+        let s = model.sensitivity
+        let behavior = e.unshaded.interpretation
+        return PIGSummaryBar(
+            unshadedPIG: e.unshaded.probabilityOfIgnition,
+            unshadedColor: behavior.color,
+            unshadedEnvelope: s.unshaded,
+            shadedPIG: e.shaded.probabilityOfIgnition,
+            shadedColor: e.shaded.interpretation.color,
+            shadedEnvelope: s.shaded,
+            behaviorWord: behavior.title,
+            behaviorColor: behavior.color)
     }
 
     private var header: some View {
@@ -91,36 +61,78 @@ struct IgnitionView: View {
         }
     }
 
+    // MARK: - Weather (IRPG Table A)
+
+    /// The weather inputs in a bounded panel so switching humidity source resizes
+    /// one block rather than shoving the sections below it. Carries the shared cue
+    /// — this same weather is what the Watch tab logs.
+    private var weatherSection: some View {
+        WeatherInputGroup(model: model, sharedWith: "Watch", showsDerivedHumidity: true)
+            .padding(Metric.cardSpacing)
+            .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
+            .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
+    }
+
+    // MARK: - Calendar · Time (Tables B/C/D)
+
+    private var calendarTimeSection: some View {
+        VStack(alignment: .leading, spacing: Metric.cardSpacing) {
+            SectionHeader(title: "Calendar · Time", annotation: "Tables B/C/D")
+            monthPicker
+            ChipPicker(title: "Time of day", options: TimeOfDay.allCases,
+                       selection: $model.timeOfDay, label: \.label)
+            clockStrip
+        }
+    }
+
     private var monthPicker: some View {
         ChipPicker(title: "Month  ·  \(model.estimate.input.monthGroup.letter) (\(model.estimate.input.monthGroup.monthsDescription))",
                    options: Array(1...12), selection: $model.month,
                    label: { Month.shortNames[$0 - 1] })
     }
 
-    /// The RH derived from the wet bulb, shown (read-only, in the brand teal) so
-    /// the value flowing into the PIG chain is visible in wet-bulb mode.
-    private var derivedHumidity: some View {
-        let rh = model.effectiveRelativeHumidity
-        return HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Rel. humidity").fieldLabel()
-                Text("computed from wet bulb")
-                    .font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
-            }
-            Spacer()
-            HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("\(rh)").font(BadwaterFont.readout(32)).foregroundStyle(BadwaterColor.accent)
-                Text("%").font(BadwaterFont.readout(18)).foregroundStyle(BadwaterColor.accent)
-            }
+    /// The always-present clock annunciator: nominal while month/time track the
+    /// wall clock, amber and tappable once the operator has overridden them — so a
+    /// stale night/day rule is never silent, and the row never shifts the layout.
+    @ViewBuilder private var clockStrip: some View {
+        if model.clockOverridden {
+            StatusStrip(icon: "clock.arrow.circlepath",
+                        message: "Month/time set manually — tap to resume tracking the clock",
+                        caution: true,
+                        rowTapAction: { model.resumeAutoClock() },
+                        identifier: "clock-override-notice")
+        } else {
+            StatusStrip(icon: "clock",
+                        message: "Tracking clock · \(Month.shortNames[model.month - 1]) · \(model.timeOfDay.label)",
+                        identifier: "clock-status")
         }
-        .padding(14)
-        .frame(maxWidth: .infinity)
-        .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
-        .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("derived-rh")
-        .accessibilityLabel("Relative humidity from wet bulb")
-        .accessibilityValue("\(rh) percent")
+    }
+
+    // MARK: - Site (corrections)
+
+    private var siteSection: some View {
+        VStack(alignment: .leading, spacing: Metric.cardSpacing) {
+            SectionHeader(title: "Site", annotation: "Corrections")
+            HStack(alignment: .top, spacing: 10) {
+                ChipPicker(title: "Aspect", options: Aspect.allCases,
+                           selection: $model.aspect, label: \.rawValue)
+                ChipPicker(title: "Slope", options: Slope.allCases,
+                           selection: $model.slope, label: \.displayName)
+            }
+            ChipPicker(title: "Elevation vs. weather site", options: ElevationDelta.allCases,
+                       selection: $model.elevationDelta, label: \.displayName)
+        }
+    }
+
+    // MARK: - Results & work
+
+    private var resultsSection: some View {
+        VStack(alignment: .leading, spacing: Metric.cardSpacing) {
+            chainStrip
+            results
+            interpretation
+            disclaimer
+        }
     }
 
     private var chainStrip: some View {

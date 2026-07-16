@@ -79,7 +79,8 @@ struct HumidityView: View {
             Text("Alaska elevation thresholds").font(BadwaterFont.body).foregroundStyle(BadwaterColor.ink)
         }
         .tint(BadwaterColor.accent)
-        .padding(.horizontal, 14).padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .frame(minHeight: Metric.tapTarget)
         .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
         .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
     }

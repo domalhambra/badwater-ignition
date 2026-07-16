@@ -137,26 +137,12 @@ struct WatchView: View {
                     .foregroundStyle(BadwaterColor.accent)
                     .accessibilityIdentifier("pending-pig")
             }
-            freshnessRow
+            freshnessStrip
             HStack(spacing: 10) {
                 StepperCard(label: "Obs hour", unit: "", value: hourBinding, range: 0...23)
                 StepperCard(label: "Obs min", unit: "", value: minuteBinding, range: 0...55, step: 5)
             }
-            ChipPicker(title: "Humidity source", options: RHSource.allCases,
-                       selection: $ignition.rhSource, label: \.displayName)
-            HStack(spacing: 10) {
-                StepperCard(label: "Dry bulb", unit: "°F", value: $ignition.dryBulbF, range: 10...130)
-                if ignition.rhSource == .direct {
-                    StepperCard(label: "Rel. humidity", unit: "%", value: $ignition.relativeHumidity, range: 0...100)
-                } else {
-                    StepperCard(label: "Wet bulb", unit: "°F", value: $ignition.wetBulbF, range: 10...130)
-                }
-            }
-            if ignition.rhSource == .wetBulb {
-                ChipPicker(title: "Elevation band  ·  \(Int(ignition.elevationBand.stationPressureInHg)) inHg",
-                           options: ElevationBand.allCases, selection: $ignition.elevationBand,
-                           label: \.conusLabel)
-            }
+            WeatherInputGroup(model: ignition, sharedWith: "Ignition", showsDerivedHumidity: false)
             noteField
         }
         .padding(13)
@@ -165,33 +151,21 @@ struct WatchView: View {
         .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
     }
 
-    /// How fresh the dry-bulb / RH reading is. Turns to the caution amber and
-    /// offers "Mark current" once the reading is older than the staleness window,
-    /// so a fresh timestamp can't silently freeze hours-old weather.
-    private var freshnessRow: some View {
+    /// How fresh the dry-bulb / RH reading is — a status annunciator that turns to
+    /// caution amber and offers "Mark current" once the reading is older than the
+    /// staleness window, so a fresh timestamp can't silently freeze hours-old
+    /// weather. Always present at a fixed height, so it never shifts the card.
+    private var freshnessStrip: some View {
         let stale = model.isPendingWeatherStale()
         let ageMinutes = model.pendingWeatherAge().map { Int($0 / 60) }
-        return HStack(spacing: 8) {
-            Image(systemName: stale ? "exclamationmark.triangle.fill" : "clock")
-                .font(.system(size: 11, weight: .semibold))
-            Text(freshnessText(stale: stale, ageMinutes: ageMinutes))
-                .font(BadwaterFont.labelSmall)
-            Spacer()
-            if stale {
-                Button {
-                    model.confirmPendingWeatherCurrent()
-                } label: {
-                    Text("Mark current")
-                        .font(BadwaterFont.labelSmall).fontWeight(.bold)
-                        .padding(.horizontal, 11).padding(.vertical, 6)
-                        .overlay(Capsule().strokeBorder(BadwaterColor.caution, lineWidth: 1.5))
-                        .foregroundStyle(BadwaterColor.caution)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("mark-weather-current")
-            }
-        }
-        .foregroundStyle(stale ? BadwaterColor.caution : BadwaterColor.muted)
+        return StatusStrip(
+            icon: stale ? "exclamationmark.triangle.fill" : "clock",
+            message: freshnessText(stale: stale, ageMinutes: ageMinutes),
+            caution: stale,
+            actionTitle: stale ? "Mark current" : nil,
+            action: stale ? { model.confirmPendingWeatherCurrent() } : nil,
+            identifier: "weather-freshness",
+            actionIdentifier: "mark-weather-current")
     }
 
     private func freshnessText(stale: Bool, ageMinutes: Int?) -> String {

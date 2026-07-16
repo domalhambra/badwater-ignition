@@ -121,6 +121,165 @@ struct ChipPicker<Option: Hashable>: View {
     }
 }
 
+/// A labeled group heading — uppercase mono title, an optional table-reference
+/// annotation, and an optional "shared with another tab" cue. Used to chunk the
+/// Ignition inputs into the IRPG worksheet's own sections (Weather / Calendar ·
+/// Time / Site) so the screen reads as distinct steps rather than one long list.
+struct SectionHeader: View {
+    let title: String
+    var annotation: String? = nil
+    /// When set, appends a passive "SHARED · <tab>" cue signaling that the
+    /// controls under this header are the same model the named tab edits — so an
+    /// operator is never surprised that weather typed here shows up there.
+    var sharedWith: String? = nil
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title).fieldLabel()
+            if let annotation {
+                Text("· \(annotation)").fieldLabel()
+            }
+            Spacer(minLength: 8)
+            if let sharedWith {
+                HStack(spacing: 3) {
+                    Image(systemName: "link")
+                    Text("SHARED · \(sharedWith.uppercased())")
+                }
+                .font(BadwaterFont.labelSmall)
+                .kerning(0.4)
+                .foregroundStyle(BadwaterColor.muted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Weather inputs are shared with the \(sharedWith) tab; edits apply everywhere.")
+            }
+        }
+    }
+}
+
+/// The app's **status annunciator** — a permanently present single-line row whose
+/// content and tint change with state, but whose presence and reserved height
+/// never do. Replaces the old come-and-go clock-override notice and weather
+/// freshness row, both of which shifted the layout as they appeared. `Muted` for
+/// nominal state, `SignalAmber` for caution; never a severity color (severity is
+/// fire behavior, not app state).
+struct StatusStrip: View {
+    let icon: String
+    let message: String
+    /// Caution state — renders in `SignalAmber` instead of `Muted`.
+    var caution: Bool = false
+    /// Optional trailing capsule action (e.g. "Mark current").
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+    /// When set, the whole row is tappable (e.g. tap to resume the clock).
+    var rowTapAction: (() -> Void)? = nil
+    /// Accessibility identifier for the row (or its whole-row button).
+    var identifier: String = "status-strip"
+    /// Accessibility identifier for the trailing action button.
+    var actionIdentifier: String? = nil
+
+    /// Reserved height, scaled with Dynamic Type so the row still holds constant
+    /// height across states at any text size.
+    @ScaledMetric(relativeTo: .caption) private var minHeight: CGFloat = Metric.statusStripHeight
+
+    private var tint: Color { caution ? BadwaterColor.caution : BadwaterColor.muted }
+
+    var body: some View {
+        let strip = HStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 11, weight: .semibold))
+            Text(message).font(BadwaterFont.labelSmall).lineLimit(2).minimumScaleFactor(0.85)
+            Spacer(minLength: 8)
+            if let actionTitle, let action {
+                Button(action: action) {
+                    Text(actionTitle)
+                        .font(BadwaterFont.labelSmall).fontWeight(.bold)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .overlay(Capsule().strokeBorder(tint, lineWidth: 1.5))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(actionIdentifier ?? "status-strip-action")
+            }
+        }
+        .foregroundStyle(tint)
+        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+        .contentShape(Rectangle())
+
+        if let rowTapAction {
+            Button(action: rowTapAction) { strip }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(identifier)
+        } else {
+            strip
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier(identifier)
+        }
+    }
+}
+
+/// A compact, always-visible headline of the current Probability of Ignition,
+/// pinned above the Ignition inputs so the result never scrolls out of sight.
+/// Shows both shadings (each in its severity color, with a severity underbar
+/// that echoes ``ResultCard``'s stripe — and, like it, warms toward the
+/// neighbouring band when the reading sits on a cell edge) plus the unshaded
+/// fire-behavior word. Read-only; the full result cards below carry the detail.
+struct PIGSummaryBar: View {
+    let unshadedPIG: Int
+    let unshadedColor: Color
+    let unshadedEnvelope: Sensitivity.Envelope?
+    let shadedPIG: Int
+    let shadedColor: Color
+    let shadedEnvelope: Sensitivity.Envelope?
+    let behaviorWord: String
+    let behaviorColor: Color
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            reading("UNSH", unshadedPIG, unshadedColor, unshadedEnvelope)
+            reading("SHD", shadedPIG, shadedColor, shadedEnvelope)
+            Spacer(minLength: 8)
+            Text(behaviorWord.uppercased())
+                .font(BadwaterFont.label).kerning(0.4)
+                .foregroundStyle(behaviorColor)
+                .lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .padding(.horizontal, Metric.screenPadding)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .background(BadwaterColor.surface)
+        .overlay(alignment: .bottom) { BadwaterColor.hairline.frame(height: 1) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("pig-summary")
+        .accessibilityLabel("Probability of ignition")
+        .accessibilityValue("Unshaded \(unshadedPIG) percent, shaded \(shadedPIG) percent. \(behaviorWord).")
+    }
+
+    private func reading(_ label: String, _ pig: Int, _ color: Color,
+                         _ env: Sensitivity.Envelope?) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(label).font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    Text("\(pig)").font(BadwaterFont.readout(26)).foregroundStyle(color)
+                    Text("%").font(BadwaterFont.readout(15)).foregroundStyle(color)
+                }
+            }
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(underbarStyle(color, env))
+                .frame(width: 56, height: 3)
+        }
+    }
+
+    /// Solid severity when firm; a subtle current→neighbour gradient on a band
+    /// edge — the horizontal echo of ``ResultCard``'s Layer-1 stripe.
+    private func underbarStyle(_ color: Color, _ env: Sensitivity.Envelope?) -> AnyShapeStyle {
+        if let nb = env?.notable {
+            return AnyShapeStyle(LinearGradient(
+                colors: [color, nb.band.color], startPoint: .leading, endPoint: .trailing))
+        }
+        return AnyShapeStyle(color)
+    }
+}
+
 /// The PIG result card: severity stripe, big tabular readout, and sub-line.
 ///
 /// When a ``Sensitivity/Envelope`` is supplied it gains a **cell-edge marker**.

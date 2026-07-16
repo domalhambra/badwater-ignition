@@ -154,6 +154,18 @@ final class IgnitionModel {
                 timeOfDay: timeOfDay, aspect: aspect, slope: slope, elevationDelta: elevationDelta))
     }
 
+    /// How firm the live PIG is under plausible reading error (±2 °F, ±3% RH by
+    /// default) — a live decision aid derived from the current inputs, never
+    /// stored on an observation. Drives the results' cell-edge marker. The raw
+    /// source-specific inputs are passed through so the sling path re-derives RH
+    /// at each perturbed wet bulb exactly as the screen does.
+    var sensitivity: Sensitivity {
+        SensitivityAnalysis.analyze(
+            dryBulbF: dryBulbF, rhSource: rhSource, relativeHumidity: relativeHumidity,
+            wetBulbF: wetBulbF, band: elevationBand, month: month, timeOfDay: timeOfDay,
+            aspect: aspect, slope: slope, elevationDelta: elevationDelta)
+    }
+
     /// Seed RH coming from the Humidity screen ("Use in ignition calc"). The
     /// pushed value is a concrete percentage, so it lands as a direct entry.
     func applyHumidity(_ rh: Int) {

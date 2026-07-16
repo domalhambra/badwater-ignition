@@ -28,6 +28,32 @@ final class IgnitionModelTests: XCTestCase {
         XCTAssertEqual(m.estimate.shaded.probabilityOfIgnition, 70)
     }
 
+    func testSensitivityReflectsInputsAndSource() {
+        let m = IgnitionModel(store: freshStore())
+        m.rhSource = .direct
+        m.dryBulbF = 95
+        m.relativeHumidity = 12
+        m.month = 7
+        m.timeOfDay = .band1400_1559
+        m.aspect = .south
+        m.slope = .gentle
+        m.elevationDelta = .level
+        // Worked example: unshaded PIG 100 is firm; shaded 70 (Very High) sits on
+        // the edge of Extreme (80) at a 3-point RH miss.
+        XCTAssertFalse(m.sensitivity.unshaded.crossesBand)
+        XCTAssertTrue(m.sensitivity.shaded.crossesBand)
+        XCTAssertEqual(m.sensitivity.shaded.notable?.pig, 80)
+        XCTAssertEqual(m.sensitivity.shaded.baseline, m.estimate.shaded.probabilityOfIgnition)
+        XCTAssertEqual(m.sensitivity.toleranceSummary, "±2°F · ±3% RH")
+
+        // Switching to a slung source changes the tolerance summary and keeps the
+        // baseline consistent with the derived-RH estimate.
+        m.rhSource = .wetBulb
+        m.wetBulbF = 70
+        XCTAssertEqual(m.sensitivity.toleranceSummary, "±2°F · ±2°F wet bulb")
+        XCTAssertEqual(m.sensitivity.unshaded.baseline, m.estimate.unshaded.probabilityOfIgnition)
+    }
+
     func testSiteFactorsPersistAcrossInstances() {
         let store = freshStore()
         let a = IgnitionModel(store: store)

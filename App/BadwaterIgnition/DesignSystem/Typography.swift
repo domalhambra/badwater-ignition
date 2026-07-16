@@ -30,10 +30,17 @@ enum BadwaterFont {
 enum Metric {
     static let screenPadding: CGFloat = 16
     static let cardSpacing: CGFloat = 12
+    /// Breathing room between the labeled input groups (Weather / Calendar·Time /
+    /// Site) so the sections read as distinct chunks, not one long list.
+    static let sectionSpacing: CGFloat = 20
     static let cardRadius: CGFloat = 16
     static let resultRadius: CGFloat = 18
     /// Minimum interactive target — sized generously for gloved hands.
     static let tapTarget: CGFloat = 48
+    /// Baseline height of a ``StatusStrip`` row. The strip reserves this height in
+    /// every state (scaled with Dynamic Type) so a warning turning on or off never
+    /// shifts the layout around it.
+    static let statusStripHeight: CGFloat = 34
 }
 
 extension Text {

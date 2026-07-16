@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposed — awaiting sign-off; no code has changed |
+| **Status** | Implemented — the restructure below shipped in the same PR that added this document; it now reads as the design record. |
 | **Scope** | Ignition screen restructure + app-wide flow polish (status affordances, shared-state visibility, Humidity consistency) |
 | **Non-goals** | No new features. No Watch-tab feature completion (shift log list, export, site gate stay M2–M6). No visual-brand changes — colors, type, and component styling stay as specified in `DESIGN.md`. |
 | **Companion** | `DESIGN.md` (visual system — source of truth for tokens and components) |
@@ -118,10 +118,17 @@ the existing `ScrollView` (`IgnitionView.swift:16`), inside the current
   its severity color. The text label is mandatory — color never signals alone
   (invariant §3). Unshaded is the more hazardous interpretation, matching the
   precedent set by the interpretation panel (`IgnitionView.swift:170–171`).
-- **Not in the bar:** FFM and the correction chain. The bar answers exactly one
-  question — *how bad, both shadings* — and defers verification to the chain
-  strip and result cards below. A bar that restates everything is a second
-  results section, not a summary.
+- **Firmness echo:** each underbar goes solid when the reading is firm and warms
+  into a current→neighbour gradient when that shading's plausible envelope
+  crosses a fire-behavior band — the horizontal echo of the cell-edge marker
+  `ResultCard` gained in the sensitivity feature (`Sensitivity.Envelope`,
+  `IgnitionModel.sensitivity`). The glance thus carries the same "this one's on
+  the move" cue as the cards, at zero added height.
+- **Not in the bar:** FFM, the correction chain, and the amber "could read …"
+  caption. The bar answers exactly one question — *how bad, both shadings* — and
+  defers verification (including the firmness caption and tap-to-expand detail)
+  to the chain strip and result cards below. A bar that restates everything is a
+  second results section, not a summary.
 
 **Behavior — always visible; never hides.**
 

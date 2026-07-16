@@ -156,13 +156,18 @@ struct IgnitionView: View {
 
     private var results: some View {
         let e = model.estimate
-        return HStack(spacing: 10) {
+        let s = model.sensitivity
+        // Top-aligned so expanding one card's firmness detail doesn't re-center
+        // the other.
+        return HStack(alignment: .top, spacing: 10) {
             ResultCard(title: "Unshaded", pig: e.unshaded.probabilityOfIgnition,
                        severity: e.unshaded.interpretation.color,
-                       subtitle: "FFM \(e.unshaded.fineFuelMoisture)% · <50% shade")
+                       subtitle: "FFM \(e.unshaded.fineFuelMoisture)% · <50% shade",
+                       sensitivity: s.unshaded, toleranceSummary: s.toleranceSummary)
             ResultCard(title: "Shaded", pig: e.shaded.probabilityOfIgnition,
                        severity: e.shaded.interpretation.color,
-                       subtitle: "FFM \(e.shaded.fineFuelMoisture)% · ≥50% shade")
+                       subtitle: "FFM \(e.shaded.fineFuelMoisture)% · ≥50% shade",
+                       sensitivity: s.shaded, toleranceSummary: s.toleranceSummary)
         }
     }
 

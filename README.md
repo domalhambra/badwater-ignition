@@ -21,6 +21,10 @@ for cell.
   plain-language fire-behavior interpretation. Handles the nighttime "+5" rule.
   RH is entered directly (off a Kestrel) or **derived from a wet-bulb
   temperature** (sling psychrometer / belt weather kit) right on the screen.
+  Each PIG result also carries a **cell-edge marker**: because the IRPG tables
+  are step functions, a reading a step or two from a cell edge can swing PIG a
+  whole fire-behavior band — so a result that sits on such an edge is flagged
+  (and tappable for the full envelope) while a firm one stays silent.
 - **Humidity:** Dry-bulb + wet-bulb + elevation band → **relative humidity and
   dew point** (NWCG psychrometric method, with Alaska thresholds). One tap sends
   the result into the Ignition calculator.

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Three-tab shell: Ignition (PIG / FFM), Humidity (RH / dew point), and Watch
+/// Three-tab shell: Humidity (RH / dew point), Ignition (PIG / FFM), and Watch
 /// (the shift observation log). The Humidity screen can push its result into
 /// Ignition and switch tabs.
 ///
@@ -25,12 +25,6 @@ struct RootView: View {
     var body: some View {
         TabView(selection: $selection) {
             NavigationStack {
-                IgnitionView(model: ignition)
-            }
-            .tabItem { Label("Ignition", systemImage: "flame") }
-            .tag(Tab.ignition)
-
-            NavigationStack {
                 HumidityView(model: humidity) { rh in
                     ignition.applyHumidity(rh)
                     selection = .ignition
@@ -38,6 +32,12 @@ struct RootView: View {
             }
             .tabItem { Label("Humidity", systemImage: "humidity") }
             .tag(Tab.humidity)
+
+            NavigationStack {
+                IgnitionView(model: ignition)
+            }
+            .tabItem { Label("Ignition", systemImage: "flame") }
+            .tag(Tab.ignition)
 
             NavigationStack {
                 WatchView(model: watch, ignition: ignition)

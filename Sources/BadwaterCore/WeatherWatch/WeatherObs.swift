@@ -15,9 +15,6 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
     public let humidity: HumidityResult?
     /// How the humidity was measured (Kestrel vs. sling).
     public let rhSource: RHSource
-    /// The briefed triggers this observation met, frozen at log time so the
-    /// record stays re-evaluation-proof if triggers change later.
-    public let crossedTriggerIDs: [UUID]
     /// Operator caveat for a suspect reading ("sun on thermometer", "one-handed
     /// sling"). Carried into the exports so a flagged reading never looks
     /// identical to a trusted one downstream.
@@ -49,7 +46,6 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
         estimate: IgnitionEstimate,
         humidity: HumidityResult? = nil,
         rhSource: RHSource,
-        crossedTriggerIDs: [UUID] = [],
         note: String? = nil,
         wind: Wind? = nil,
         elevationFeet: Int? = nil,
@@ -62,7 +58,6 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
         self.estimate = estimate
         self.humidity = humidity
         self.rhSource = rhSource
-        self.crossedTriggerIDs = crossedTriggerIDs
         self.note = note
         self.wind = wind
         self.elevationFeet = elevationFeet
@@ -73,7 +68,7 @@ public struct WeatherObs: Identifiable, Equatable, Codable, Sendable {
 
     /// The value of a metric for this observation, or `nil` when it isn't
     /// computed here (e.g. dew point on a Kestrel obs that wasn't slung).
-    public func value(of metric: TriggerMetric) -> Int? {
+    public func value(of metric: ObservationMetric) -> Int? {
         switch metric {
         case .temperature: return estimate.input.dryBulbF
         case .relativeHumidity: return estimate.input.relativeHumidity
@@ -132,7 +127,7 @@ public struct Shift: Identifiable, Equatable, Codable, Sendable {
     /// `(timestamp, value)` points for a metric across the shift, in **chronological
     /// order** (a back-filled obs can't kink the trend line). A `nil` value marks
     /// an obs where the metric wasn't computed.
-    public func series(of metric: TriggerMetric) -> [(date: Date, value: Int?)] {
+    public func series(of metric: ObservationMetric) -> [(date: Date, value: Int?)] {
         obs.sorted { $0.timestamp < $1.timestamp }
             .map { (date: $0.timestamp, value: $0.value(of: metric)) }
     }

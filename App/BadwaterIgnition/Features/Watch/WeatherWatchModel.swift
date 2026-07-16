@@ -8,15 +8,12 @@ import BadwaterCore
 /// ``IgnitionModel`` so the *pending* observation is always the live estimate.
 /// A log freezes that estimate (plus the ``HumidityResult`` when slung) with a
 /// timestamp, deriving month + time-of-day from the wall clock so the record and
-/// the trend can't be biased by a stale band left on the Ignition tab. Triggers
-/// and the current shift persist across launches; all compute is local & offline.
+/// the trend can't be biased by a stale band left on the Ignition tab. The current
+/// shift persists across launches; all compute is local & offline.
 @Observable
 final class WeatherWatchModel {
     /// The current shift's logged observations.
     var shift: Shift { didSet { persistShift() } }
-    /// The crew's briefed trigger points. Empty until the crew adds their own —
-    /// the app never authors a threshold.
-    var triggers: [BriefedTrigger] { didSet { persistTriggers() } }
     /// Radio addressee for the broadcast script (e.g. "Diamond Mountain").
     /// Deliberately stored app-wide, not per-shift: the radio net usually
     /// outlives a shift, so it survives `startNewShift()`.
@@ -47,7 +44,6 @@ final class WeatherWatchModel {
         self.ignition = ignition
         self.store = store
         self.shift = Self.decode(Shift.self, from: store.data(forKey: Keys.shift)) ?? Shift(started: now)
-        self.triggers = Self.decode([BriefedTrigger].self, from: store.data(forKey: Keys.triggers)) ?? []
         self.addressee = store.string(forKey: Keys.addressee) ?? ""
         self.siteElevationFeet = store.object(forKey: Keys.siteElevation) as? Int
         self.siteCoordinate = Self.decode(GeoPoint.self, from: store.data(forKey: Keys.siteCoordinate))
@@ -62,8 +58,7 @@ final class WeatherWatchModel {
     func confirmSite(at now: Date = Date()) { siteConfirmedAt = now }
 
     /// The observation a LOG tap would freeze right now: the live estimate, with
-    /// month + time-of-day taken from the wall clock (not a possibly-stale band),
-    /// and the triggers it currently meets already computed.
+    /// month + time-of-day taken from the wall clock (not a possibly-stale band).
     func pendingObs(at now: Date = Date(), calendar: Calendar = .current) -> WeatherObs {
         let comps = calendar.dateComponents([.month, .hour, .minute], from: now)
         // A slung obs uses the station-pressure band for the observation site's own
@@ -87,11 +82,7 @@ final class WeatherWatchModel {
             timeOfDay: TimeOfDay.from(hour: comps.hour ?? 12, minute: comps.minute ?? 0),
             aspect: ignition.aspect, slope: ignition.slope, elevationDelta: ignition.elevationDelta)
         let estimate = IgnitionCalculator.estimate(input)
-        let base = WeatherObs(timestamp: now, estimate: estimate, humidity: humidity, rhSource: ignition.rhSource)
-        return WeatherObs(
-            id: base.id, timestamp: now, estimate: estimate, humidity: humidity,
-            rhSource: ignition.rhSource,
-            crossedTriggerIDs: TriggerEvaluator.metTriggerIDs(triggers, by: base))
+        return WeatherObs(timestamp: now, estimate: estimate, humidity: humidity, rhSource: ignition.rhSource)
     }
 
     /// Freeze the current reading and append it to the shift. Observed metadata
@@ -135,13 +126,7 @@ final class WeatherWatchModel {
     var latest: WeatherObs? { shift.latest }
 
     /// `(timestamp, value)` points for a metric across the shift, chronological.
-    func series(of metric: TriggerMetric) -> [(date: Date, value: Int?)] { shift.series(of: metric) }
-
-    /// Latched trigger status, crossed ones first.
-    var crossings: [TriggerCrossing] { TriggerEvaluator.crossings(of: triggers, across: shift.obs) }
-
-    /// How many briefed triggers have been crossed this shift.
-    var crossedCount: Int { crossings.filter(\.isCrossed).count }
+    func series(of metric: ObservationMetric) -> [(date: Date, value: Int?)] { shift.series(of: metric) }
 
     func startNewShift(at now: Date = Date()) {
         shift = Shift(started: now)
@@ -149,10 +134,9 @@ final class WeatherWatchModel {
         siteConfirmedAt = nil
     }
 
-    /// Delete a mis-entered observation. Trigger crossings re-derive from the
-    /// remaining obs on the next read, so removing a bad log can't leave a
-    /// latched flag behind; the shift re-persists via `didSet`. The removed obs
-    /// is retained for ``undoRemoveObs()`` so the view can offer an undo toast.
+    /// Delete a mis-entered observation. The shift re-persists via `didSet`, and
+    /// the removed obs is retained for ``undoRemoveObs()`` so the view can offer
+    /// an undo toast.
     func removeObs(id: UUID) {
         if let removed = shift.obs.first(where: { $0.id == id }) { lastRemovedObs = removed }
         shift.obs.removeAll { $0.id == id }
@@ -263,16 +247,9 @@ final class WeatherWatchModel {
             forceLocation: forceLocation, suppressLocation: suppressLocation)
     }
 
-    func addTrigger(_ trigger: BriefedTrigger) { triggers.append(trigger) }
-    func removeTrigger(id: UUID) { triggers.removeAll { $0.id == id } }
-    func updateTrigger(_ trigger: BriefedTrigger) {
-        if let i = triggers.firstIndex(where: { $0.id == trigger.id }) { triggers[i] = trigger }
-    }
-
     // MARK: - Persistence (JSON blobs; arrays grow across a shift/season)
 
     private func persistShift() { store.set(try? JSONEncoder().encode(shift), forKey: Keys.shift) }
-    private func persistTriggers() { store.set(try? JSONEncoder().encode(triggers), forKey: Keys.triggers) }
     private func persistAddressee() { store.set(addressee, forKey: Keys.addressee) }
     private func persistSiteElevation() {
         // Store nil as an absent key (not NSNull) so a fresh model reads it back as nil.
@@ -295,7 +272,6 @@ final class WeatherWatchModel {
 
     private enum Keys {
         static let shift = "watch.shift"
-        static let triggers = "watch.triggers"
         static let addressee = "watch.addressee"
         static let siteElevation = "watch.siteElevationFeet"
         static let siteCoordinate = "watch.siteCoordinate"

@@ -209,7 +209,7 @@ struct WatchView: View {
     /// site-confirmation gate that holds the first log of a shift arrives in M2.
     private var logBar: some View {
         Button {
-            model.logObs(at: pendingTime, note: note.isEmpty ? nil : note)
+            model.logObs(at: pendingTime, wind: ignition.wind, note: note.isEmpty ? nil : note)
             note = ""
             pendingTime = Date()
         } label: {

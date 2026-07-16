@@ -216,13 +216,19 @@ struct StatusStrip: View {
     }
 }
 
-/// A compact, always-visible headline of the current Probability of Ignition,
-/// pinned above the Ignition inputs so the result never scrolls out of sight.
-/// Shows both shadings (each in its severity color, with a severity underbar
-/// that echoes ``ResultCard``'s stripe — and, like it, warms toward the
-/// neighbouring band when the reading sits on a cell edge) plus the unshaded
+/// A compact, always-visible headline pinned above the Ignition inputs so the
+/// reading never scrolls out of sight. Two tiers: the current **reading** —
+/// temperature, RH, and wind — over the **result** — both PIG shadings (each in
+/// its severity color, with an underbar that echoes ``ResultCard``'s stripe and,
+/// like it, warms toward the neighbouring band on a cell edge) plus the unshaded
 /// fire-behavior word. Read-only; the full result cards below carry the detail.
 struct PIGSummaryBar: View {
+    let temperatureF: Int
+    let relativeHumidity: Int
+    /// Compact wind, e.g. `"SW 4-6"`, `"Calm"`, `"N 3-5 Gust 12"`.
+    let windText: String
+    /// Spoken wind for VoiceOver, e.g. `"4-6 miles per hour from the Southwest"`.
+    let windSpoken: String
     let unshadedPIG: Int
     let unshadedColor: Color
     let unshadedEnvelope: Sensitivity.Envelope?
@@ -233,24 +239,46 @@ struct PIGSummaryBar: View {
     let behaviorColor: Color
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            reading("UNSH", unshadedPIG, unshadedColor, unshadedEnvelope)
-            reading("SHD", shadedPIG, shadedColor, shadedEnvelope)
-            Spacer(minLength: 8)
-            Text(behaviorWord.uppercased())
-                .font(BadwaterFont.label).kerning(0.4)
-                .foregroundStyle(behaviorColor)
-                .lineLimit(1).minimumScaleFactor(0.7)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                weatherNode("TEMP", "\(temperatureF)", "°F")
+                weatherNode("RH", "\(relativeHumidity)", "%")
+                weatherNode("WIND", windText, nil)
+            }
+            HStack(alignment: .center, spacing: 16) {
+                reading("UNSH", unshadedPIG, unshadedColor, unshadedEnvelope)
+                reading("SHD", shadedPIG, shadedColor, shadedEnvelope)
+                Spacer(minLength: 8)
+                Text(behaviorWord.uppercased())
+                    .font(BadwaterFont.label).kerning(0.4)
+                    .foregroundStyle(behaviorColor)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
         }
         .padding(.horizontal, Metric.screenPadding)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, minHeight: 84, alignment: .leading)
         .background(BadwaterColor.surface)
         .overlay(alignment: .bottom) { BadwaterColor.hairline.frame(height: 1) }
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("pig-summary")
-        .accessibilityLabel("Probability of ignition")
-        .accessibilityValue("Unshaded \(unshadedPIG) percent, shaded \(shadedPIG) percent. \(behaviorWord).")
+        .accessibilityLabel("Current reading and probability of ignition")
+        .accessibilityValue("Temperature \(temperatureF) degrees Fahrenheit, humidity \(relativeHumidity) percent, wind \(windSpoken). Unshaded \(unshadedPIG) percent, shaded \(shadedPIG) percent. \(behaviorWord).")
+    }
+
+    /// One reading-tier stat (temp / RH / wind), evenly sharing the row.
+    private func weatherNode(_ label: String, _ value: String, _ unit: String?) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value).font(BadwaterFont.readout(18)).foregroundStyle(BadwaterColor.ink)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                if let unit {
+                    Text(unit).font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func reading(_ label: String, _ pig: Int, _ color: Color,

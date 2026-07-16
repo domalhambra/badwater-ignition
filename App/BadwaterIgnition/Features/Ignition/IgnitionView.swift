@@ -42,7 +42,12 @@ struct IgnitionView: View {
         let e = model.estimate
         let s = model.sensitivity
         let behavior = e.unshaded.interpretation
+        let wind = model.wind
         return PIGSummaryBar(
+            temperatureF: model.dryBulbF,
+            relativeHumidity: model.effectiveRelativeHumidity,
+            windText: wind.spotString,
+            windSpoken: wind.spokenPhrase,
             unshadedPIG: e.unshaded.probabilityOfIgnition,
             unshadedColor: behavior.color,
             unshadedEnvelope: s.unshaded,

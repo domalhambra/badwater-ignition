@@ -59,6 +59,9 @@ final class BadwaterIgnitionUITests: XCTestCase {
         // Fresh shift shows the empty state until the first log.
         XCTAssertTrue(app.otherElements["watch-empty"].waitForExistence(timeout: 5))
 
+        // The first log of a shift is gated on an explicit site review.
+        app.buttons["confirm-site"].tap()
+
         // Logging freezes the current reading into the shift: the hero (both PIG
         // results + the radio line) appears and the empty state goes away.
         app.buttons["log-observation"].tap()

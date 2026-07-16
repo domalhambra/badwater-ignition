@@ -144,12 +144,23 @@ Top-to-bottom:
    first log).
 2. **Latest-reading hero** — the last logged obs: time, both `ResultCard`s,
    and a radio-ready broadcast line ("Wx obs 1430, temp 90, RH 8, …").
-3. **Pending capture card** — weather-freshness row, obs-time steppers, the
-   shared weather inputs (bound to the same `IgnitionModel` as Ignition), an
-   optional note, and a live PIG preview.
-4. **Log bar** — fixed at the bottom; freezes the pending reading into the
-   shift. Site/wind controls, the broadcast panel, trends, and the shift-log
-   list are planned follow-ons (M2–M6).
+3. **Broadcast panel** — the full frozen radio script for the latest obs, with
+   a Share action for the radio operator.
+4. **Trend** — a `Swift Charts` sparkline of unshaded PIG across the shift
+   (shown once there are ≥2 observations).
+5. **Shift log** — every logged obs (time · PIG · wind · note) with per-row
+   delete and an undo affordance.
+6. **Site & radio** — the sticky IMET header: addressee, location name,
+   division, site elevation, and lat/long (typed, kept offline). The first log
+   of a shift is gated on an explicit **Confirm site** review so a persisted
+   default can never silently feed a broadcast.
+7. **Pending capture card** — weather-freshness strip, obs-time steppers, the
+   shared weather inputs (bound to the same `IgnitionModel` as Ignition,
+   including wind), an optional note, and a live PIG preview.
+8. **Export shift** — IMET `.xlsx` (via the file exporter), NWS spot obs, and a
+   Notes table (via the share sheet).
+9. **Log bar** — fixed at the bottom; freezes the pending reading (with wind)
+   into the shift.
 
 ---
 

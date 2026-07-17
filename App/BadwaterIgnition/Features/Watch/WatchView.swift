@@ -35,8 +35,12 @@ struct WatchView: View {
     @State private var editingObs: WeatherObs?
     /// Drives the IMET `.xlsx` export sheet.
     @State private var exportingWorkbook = false
-    /// Guards the destructive new-shift action behind a confirm.
+    /// Guards the new-shift action (which archives the current shift) behind a confirm.
     @State private var confirmNewShift = false
+    /// Guards the destructive clear-all-history action behind a confirm.
+    @State private var confirmClearHistory = false
+    /// The archived day pending deletion (nil = no confirm showing).
+    @State private var shiftToDelete: Shift?
     /// Wall-clock reference for the "next obs due" countdown; ticks every 30 s and
     /// refreshes on foreground so the strip counts down without a manual nudge.
     @State private var now = Date()
@@ -49,6 +53,9 @@ struct WatchView: View {
 
     private var hasObs: Bool { !model.shift.obs.isEmpty }
     private var canTrend: Bool { model.shift.obs.count >= 2 }
+    /// There's something to export/manage when the current shift has obs or any day
+    /// is retained in history (so the export + record controls survive a fresh shift).
+    private var hasExportableData: Bool { hasObs || !model.history.isEmpty }
 
     var body: some View {
         ScrollView {
@@ -65,7 +72,8 @@ struct WatchView: View {
                 if hasObs { shiftLogSection }
                 siteSection
                 captureCard
-                if hasObs { exportSection }
+                if hasExportableData { exportSection }
+                if !model.history.isEmpty { historySection }
                 if hasObs { newShiftRow }
                 disclaimer
             }
@@ -438,25 +446,112 @@ struct WatchView: View {
 
     private var exportSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Export shift", annotation: "Share")
+            SectionHeader(title: "Export", annotation: exportAnnotation)
             HStack(spacing: 10) {
                 Button { exportingWorkbook = true } label: { actionLabel("IMET .xlsx", "tablecells") }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("export-imet")
-                ShareLink(item: model.spotObservationsText()) { actionLabel("Spot obs", "doc.plaintext") }
-                    .accessibilityIdentifier("export-spot")
+                ShareLink(item: model.notesText()) { actionLabel("Notes table", "note.text") }
+                    .accessibilityIdentifier("export-notes")
             }
-            ShareLink(item: model.notesText()) { actionLabel("Notes table", "note.text") }
-                .accessibilityIdentifier("export-notes")
         }
         .fileExporter(
             isPresented: $exportingWorkbook,
             document: exportingWorkbook ? IMETWorkbookDocument(data: model.imetWorkbookData())
                                         : IMETWorkbookDocument(data: Data()),
             contentType: IMETWorkbookDocument.xlsx,
-            defaultFilename: "BadwaterIgnition-shift"
+            defaultFilename: "BadwaterIgnition-observations"
         ) { _ in }
     }
+
+    /// Export header annotation — surfaces the multi-day span once more than one
+    /// day of observations is retained.
+    private var exportAnnotation: String {
+        let days = model.retainedObsDayCount()
+        return days > 1 ? "\(days) days" : "Spreadsheet + notes"
+    }
+
+    // MARK: - History (retained days) + clearing
+
+    /// The retained-days record: a reminder to export-then-clear once the log spans
+    /// several days, the list of archived days (each individually removable), and a
+    /// clear-all action. Present whenever any day is retained.
+    private var historySection: some View {
+        let obsDays = model.retainedObsDayCount()
+        return VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "History", annotation: "\(model.history.count) day\(model.history.count == 1 ? "" : "s")")
+            if obsDays > 3 {
+                StatusStrip(
+                    icon: "tray.full",
+                    message: "\(obsDays) days of observations retained — export the spreadsheet, then clear the days you don't need.",
+                    caution: true, identifier: "history-reminder")
+            }
+            ForEach(model.history) { archived in archivedRow(archived) }
+            Button(role: .destructive) { confirmClearHistory = true } label: {
+                actionLabel("Clear all history", "trash")
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("clear-history")
+            .confirmationDialog(
+                "Clear all \(model.history.count) retained day\(model.history.count == 1 ? "" : "s")? Export the spreadsheet first if you still need them.",
+                isPresented: $confirmClearHistory, titleVisibility: .visible) {
+                Button("Clear all history", role: .destructive) { model.clearHistory() }
+                Button("Cancel", role: .cancel) {}
+            }
+        }
+        .confirmationDialog(
+            "Delete this day's observations? Export the spreadsheet first if you still need them.",
+            isPresented: Binding(get: { shiftToDelete != nil }, set: { if !$0 { shiftToDelete = nil } }),
+            titleVisibility: .visible, presenting: shiftToDelete) { day in
+            Button("Delete day", role: .destructive) { model.removeArchivedShift(id: day.id) }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func archivedRow(_ shift: Shift) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dayLabel(shift))
+                    .font(BadwaterFont.readout(16)).foregroundStyle(BadwaterColor.ink)
+                Text(archivedSubtitle(shift))
+                    .font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Button(role: .destructive) { shiftToDelete = shift } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(BadwaterColor.caution)
+                    .frame(width: Metric.tapTarget, height: Metric.tapTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("delete-day")
+            .accessibilityLabel("Delete \(dayLabel(shift))")
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BadwaterColor.hairline))
+    }
+
+    /// A retained day's date, e.g. "Mon, Jul 6" — taken from its earliest obs so a
+    /// night shift crossing midnight still labels by the day it began.
+    private func dayLabel(_ shift: Shift) -> String {
+        let date = shift.obs.map(\.timestamp).min() ?? shift.started
+        return Self.dayFormatter.string(from: date)
+    }
+
+    private func archivedSubtitle(_ shift: Shift) -> String {
+        var parts = ["\(shift.obs.count) obs"]
+        if let d = shift.division, !d.isEmpty { parts.append(d) }
+        else if let l = shift.locationName, !l.isEmpty { parts.append(l) }
+        return parts.joined(separator: " · ")
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate("EEEMMMd")
+        return f
+    }()
 
     // MARK: - New shift (M3)
 
@@ -464,9 +559,9 @@ struct WatchView: View {
         Button { confirmNewShift = true } label: { actionLabel("Start new shift", "plus.circle") }
             .buttonStyle(.plain)
             .accessibilityIdentifier("new-shift")
-            .confirmationDialog("Start a new shift? The current shift's log is cleared.",
+            .confirmationDialog("Start a new shift? This shift is saved to History; the new shift starts empty.",
                                 isPresented: $confirmNewShift, titleVisibility: .visible) {
-                Button("Start new shift", role: .destructive) {
+                Button("Start new shift") {
                     model.startNewShift()
                     pendingTime = Date()
                     note = ""

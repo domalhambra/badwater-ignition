@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import BadwaterCore
 
 /// The **Watch** screen (Weather Watch — the shift observation log).
@@ -13,6 +14,7 @@ struct WatchView: View {
     @Bindable var model: WeatherWatchModel
     @Bindable var ignition: IgnitionModel
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.scenePhase) private var scenePhase
 
     /// The timestamp a Log tap will record. Seeded to "now"; editable via the obs
     /// time steppers (off-hour or back-filled readings), reset to now after a log.
@@ -28,6 +30,13 @@ struct WatchView: View {
     @State private var exportingWorkbook = false
     /// Guards the destructive new-shift action behind a confirm.
     @State private var confirmNewShift = false
+    /// Wall-clock reference for the "next obs due" countdown; ticks every 30 s and
+    /// refreshes on foreground so the strip counts down without a manual nudge.
+    @State private var now = Date()
+    private let dueTick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
+    /// Standard hourly weather-watch cadence for the next observation.
+    private let obsCadence: TimeInterval = 60 * 60
 
     private var hasObs: Bool { !model.shift.obs.isEmpty }
 
@@ -35,6 +44,7 @@ struct WatchView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metric.sectionSpacing) {
                 header
+                obsDueStrip
                 if let latest = model.latest {
                     hero(latest)
                     broadcastSection(latest)
@@ -54,12 +64,45 @@ struct WatchView: View {
         .safeAreaInset(edge: .bottom) { logBar }
         .background(BadwaterColor.background)
         .navigationTitle("Obs")
+        .onReceive(dueTick) { now = $0 }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
         .onAppear {
+            now = Date()
             if let c = model.siteCoordinate {
                 latText = String(c.latitude)
                 lonText = String(c.longitude)
             }
         }
+    }
+
+    // MARK: - Next-obs-due annunciator
+
+    /// Always-present cadence strip: how long until the next hourly observation is
+    /// due (from the last logged obs), turning to caution amber within 5 minutes
+    /// of — and after — the due time, so a weather watch stays a *prospective*
+    /// discipline rather than a log noticed an hour late. No obs yet ⇒ take one now.
+    private var obsDueStrip: some View {
+        let icon: String, message: String, caution: Bool
+        if let last = model.latest?.timestamp {
+            let due = last.addingTimeInterval(obsCadence)
+            let mins = Int(due.timeIntervalSince(now) / 60)   // truncates toward zero
+            if mins <= 5 {
+                caution = true
+                icon = "clock.badge.exclamationmark"
+                message = mins >= 0
+                    ? "Obs due now · \(clock(due))"
+                    : "Obs overdue \(-mins) min · was due \(clock(due))"
+            } else {
+                caution = false
+                icon = "clock"
+                message = "Next obs \(clock(due)) · in \(mins) min"
+            }
+        } else {
+            caution = false
+            icon = "clock"
+            message = "First obs of the shift — take one now"
+        }
+        return StatusStrip(icon: icon, message: message, caution: caution, identifier: "obs-due")
     }
 
     // MARK: - Header

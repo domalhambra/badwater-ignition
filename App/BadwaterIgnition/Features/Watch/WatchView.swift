@@ -652,7 +652,7 @@ private func copyToPasteboard(_ text: String) {
     UIPasteboard.general.string = text
     #elseif canImport(AppKit)
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(text, forType: .string)
+    _ = NSPasteboard.general.setString(text, forType: .string)
     #endif
 }
 

@@ -477,12 +477,13 @@ struct WatchView: View {
     /// several days, the list of archived days (each individually removable), and a
     /// clear-all action. Present whenever any day is retained.
     private var historySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let obsDays = model.retainedObsDayCount()
+        return VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "History", annotation: "\(model.history.count) day\(model.history.count == 1 ? "" : "s")")
-            if model.retainedObsDayCount() > 3 {
+            if obsDays > 3 {
                 StatusStrip(
                     icon: "tray.full",
-                    message: "\(model.retainedObsDayCount()) days of observations retained — export the spreadsheet, then clear the days you don't need.",
+                    message: "\(obsDays) days of observations retained — export the spreadsheet, then clear the days you don't need.",
                     caution: true, identifier: "history-reminder")
             }
             ForEach(model.history) { archived in archivedRow(archived) }

@@ -35,6 +35,14 @@ final class IgnitionModel {
     var aspect: Aspect { didSet { persist() } }
     var slope: Slope { didSet { persist() } }
     var elevationDelta: ElevationDelta { didSet { persist() } }
+    /// Observed wind — part of the weather reading, entered on the shared Weather
+    /// inputs and folded into a logged Watch observation for the IMET / spot /
+    /// radio outputs. It does **not** feed the PIG estimate (the IRPG tables don't
+    /// use wind), so it is intentionally absent from `estimate`/`sensitivity`.
+    /// Speed 0 mph = light/variable (no direction); gust 0 = not gusting.
+    var windSpeedMPH: Int { didSet { persist() } }
+    var windDirection: Wind.Direction { didSet { persist() } }
+    var windGustMPH: Int { didSet { persist() } }
 
     /// When the weather inputs (dry bulb / RH / wet bulb / source) were last
     /// hand-edited. Persisted, so "these numbers are five hours old" survives a
@@ -65,6 +73,10 @@ final class IgnitionModel {
         wetBulbF = store.object(forKey: Keys.wetBulb) as? Int ?? 60
         elevationBand = ElevationBand(rawValue: store.object(forKey: Keys.band) as? Int ?? 3) ?? .band3
         rhSource = RHSource(rawValue: store.string(forKey: Keys.rhSource) ?? "") ?? .direct
+        // Observed wind (recorded for the Watch outputs; not part of the PIG calc).
+        windSpeedMPH = store.object(forKey: Keys.windSpeed) as? Int ?? 0
+        windDirection = Wind.Direction(rawValue: store.string(forKey: Keys.windDir) ?? "") ?? .north
+        windGustMPH = store.object(forKey: Keys.windGust) as? Int ?? 0
         // Month / time pre-fill from the clock unless previously overridden this session.
         month = comps.month ?? 7
         timeOfDay = TimeOfDay.from(hour: comps.hour ?? 12, minute: comps.minute ?? 0)
@@ -166,6 +178,14 @@ final class IgnitionModel {
             aspect: aspect, slope: slope, elevationDelta: elevationDelta)
     }
 
+    /// The observed wind assembled from the entry fields. Speed 0 = light/variable
+    /// (no direction); gust 0 = not gusting.
+    var wind: Wind {
+        let gust = windGustMPH > 0 ? windGustMPH : nil
+        guard windSpeedMPH > 0 else { return .lightVariable(gust: gust) }
+        return .measured(Wind.SpeedRange(windSpeedMPH), windDirection, gust: gust)
+    }
+
     /// Seed RH coming from the Humidity screen ("Use in ignition calc"). The
     /// pushed value is a concrete percentage, so it lands as a direct entry.
     func applyHumidity(_ rh: Int) {
@@ -186,6 +206,9 @@ final class IgnitionModel {
         store.set(aspect.rawValue, forKey: Keys.aspect)
         store.set(slope.rawValue, forKey: Keys.slope)
         store.set(elevationDelta.rawValue, forKey: Keys.elevation)
+        store.set(windSpeedMPH, forKey: Keys.windSpeed)
+        store.set(windDirection.rawValue, forKey: Keys.windDir)
+        store.set(windGustMPH, forKey: Keys.windGust)
     }
 
     private enum Keys {
@@ -197,6 +220,9 @@ final class IgnitionModel {
         static let aspect = "ignition.aspect"
         static let slope = "ignition.slope"
         static let elevation = "ignition.elevationDelta"
+        static let windSpeed = "ignition.windSpeedMPH"
+        static let windDir = "ignition.windDirection"
+        static let windGust = "ignition.windGustMPH"
         static let weatherEdited = "ignition.weatherEditedAt"
         static let weatherConfirmed = "ignition.weatherConfirmedAt"
     }

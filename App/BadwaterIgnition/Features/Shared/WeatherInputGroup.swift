@@ -47,8 +47,26 @@ struct WeatherInputGroup: View {
                            label: \.conusLabel)
                 if showsDerivedHumidity { derivedHumidity }
             }
+            windControls
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.rhSource)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.windSpeedMPH > 0)
+    }
+
+    /// Observed wind. Speed 0 mph reads as light/variable and hides the direction
+    /// and gust; above 0 the compass and gust appear (contained, so the rest of
+    /// the group doesn't jump). Wind is recorded on the reading, not used by PIG.
+    @ViewBuilder private var windControls: some View {
+        HStack(spacing: 10) {
+            StepperCard(label: "Wind", unit: "mph", value: $model.windSpeedMPH, range: 0...60)
+            if model.windSpeedMPH > 0 {
+                StepperCard(label: "Gust", unit: "mph", value: $model.windGustMPH, range: 0...80)
+            }
+        }
+        if model.windSpeedMPH > 0 {
+            ChipPicker(title: "Wind from", options: Wind.Direction.allCases,
+                       selection: $model.windDirection, label: \.abbreviation)
+        }
     }
 
     /// The RH derived from the wet bulb, shown (read-only, in the brand teal) so

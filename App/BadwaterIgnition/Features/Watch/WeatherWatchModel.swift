@@ -202,6 +202,25 @@ final class WeatherWatchModel {
     /// `(timestamp, value)` points for a metric across the shift, chronological.
     func series(of metric: ObservationMetric) -> [(date: Date, value: Int?)] { shift.series(of: metric) }
 
+    /// Per-day series for a metric across the retained history **and** the current
+    /// shift — the source for the day-overlay trend. Each entry is one local
+    /// calendar day with its chronological `(timestamp, value)` points where the
+    /// metric is present (obs that don't compute it, e.g. dew point on a Kestrel
+    /// reading, are dropped). Days are returned oldest→newest so the caller can
+    /// style the most recent one distinctly.
+    func daySeries(of metric: ObservationMetric, calendar: Calendar = .current)
+        -> [(day: Date, points: [(date: Date, value: Int)])] {
+        let valued = allShifts.flatMap(\.obs).compactMap { o -> (day: Date, date: Date, value: Int)? in
+            guard let v = o.value(of: metric) else { return nil }
+            return (day: calendar.startOfDay(for: o.timestamp), date: o.timestamp, value: v)
+        }
+        let byDay = Dictionary(grouping: valued, by: { $0.day })
+        return byDay.keys.sorted().map { day in
+            let pts = byDay[day]!.sorted { $0.date < $1.date }.map { (date: $0.date, value: $0.value) }
+            return (day: day, points: pts)
+        }
+    }
+
     /// Close out the current shift and start a fresh one. A shift with any
     /// observations is archived to ``history`` (newest first) rather than
     /// discarded, so the record survives into the next day's shift and the IMET

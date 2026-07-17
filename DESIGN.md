@@ -99,11 +99,12 @@ they update live.
 
 ## 4. Screens
 
-Three tabs — **Humidity, Ignition, Watch** (left to right), launching on
+Three tabs — **Humidity, Ignition, Obs** (left to right), launching on
 **Ignition** (`App/BadwaterIgnition/App/RootView.swift`). Each is an
 **instrument, not a form** — no "Calculate" button; results update on every
 input change. All three tabs share a single `IgnitionModel`, so the weather
-Watch logs is the same weather Ignition shows.
+the Obs tab logs is the same weather Ignition shows. (The Obs tab is the
+Weather-Watch feature — `WatchView` / `WeatherWatchModel` internally.)
 
 > A pending workflow restructure (pinned result bar, grouped input sections,
 > unified status strip) is specified in `docs/UX_WORKFLOW.md`.
@@ -139,8 +140,8 @@ Top-to-bottom:
 6. **"Use in ignition calc"** — teal button; pushes RH into the Ignition tab and
    switches to it. Sling psychrometer → RH → PIG in one pipeline, no re-typing.
 
-### 4.3 Watch (shift observation log)
-1. **Header** — "Watch" + the shift's obs count (`IRPG PMS 461` before the
+### 4.3 Obs (shift observation log)
+1. **Header** — "Obs" + the shift's obs count (`IRPG PMS 461` before the
    first log).
 2. **Latest-reading hero** — the last logged obs: time, both `ResultCard`s,
    and a radio-ready broadcast line ("Wx obs 1430, temp 90, RH 8, …").
@@ -192,7 +193,7 @@ Top-to-bottom:
 4. **"Book mode" (v2 candidate)** — render the actual IRPG table with the
    selected cells highlighted; the app *becomes* the pocket-guide page.
 5. **Apple Watch app / widget (v2)** — glanceable PIG on the wrist or home
-   screen during a weather obs. (Distinct from the shipped **Watch tab**,
+   screen during a weather obs. (Distinct from the shipped **Obs tab**,
    §4.3, which is the phone's shift observation log.)
 
 ---

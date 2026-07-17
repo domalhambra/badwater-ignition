@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Three-tab shell: Humidity (RH / dew point), Ignition (PIG / FFM), and Watch
-/// (the shift observation log). The Humidity screen can push its result into
-/// Ignition and switch tabs.
+/// Three-tab shell: Humidity (RH / dew point), Ignition (PIG / FFM), and Obs
+/// (the shift observation log — the Weather-Watch feature, ``WatchView`` /
+/// ``WeatherWatchModel`` internally). The Humidity screen can push its result
+/// into Ignition and switch tabs.
 ///
-/// All three tabs share a single ``IgnitionModel`` so the weather Watch freezes
-/// is the same weather the operator sees on Ignition — constructed here in
+/// All three tabs share a single ``IgnitionModel`` so the weather the Obs tab
+/// freezes is the same weather the operator sees on Ignition — constructed here in
 /// `init` because one `@State` can't be initialized from another inline.
 struct RootView: View {
     @State private var ignition: IgnitionModel
@@ -42,7 +43,7 @@ struct RootView: View {
             NavigationStack {
                 WatchView(model: watch, ignition: ignition)
             }
-            .tabItem { Label("Watch", systemImage: "binoculars") }
+            .tabItem { Label("Obs", systemImage: "binoculars") }
             .tag(Tab.watch)
         }
         .tint(BadwaterColor.accent)

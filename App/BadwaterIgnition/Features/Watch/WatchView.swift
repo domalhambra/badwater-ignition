@@ -53,7 +53,7 @@ struct WatchView: View {
         }
         .safeAreaInset(edge: .bottom) { logBar }
         .background(BadwaterColor.background)
-        .navigationTitle("Watch")
+        .navigationTitle("Obs")
         .onAppear {
             if let c = model.siteCoordinate {
                 latText = String(c.latitude)
@@ -66,7 +66,7 @@ struct WatchView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Watch").font(BadwaterFont.title).foregroundStyle(BadwaterColor.ink)
+            Text("Obs").font(BadwaterFont.title).foregroundStyle(BadwaterColor.ink)
             Spacer()
             Text(shiftSummary).fieldLabel()
         }

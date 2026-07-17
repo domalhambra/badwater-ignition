@@ -55,7 +55,7 @@ final class BadwaterIgnitionUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        app.tabBars.buttons["Watch"].tap()
+        app.tabBars.buttons["Obs"].tap()
         // Fresh shift shows the empty state until the first log.
         XCTAssertTrue(app.otherElements["watch-empty"].waitForExistence(timeout: 5))
 
@@ -75,7 +75,7 @@ final class BadwaterIgnitionUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        app.tabBars.buttons["Watch"].tap()
+        app.tabBars.buttons["Obs"].tap()
         // The pending capture card is always available — note field, dry-bulb
         // stepper, and the live PIG preview — so a reading can be built and logged.
         XCTAssertTrue(app.textFields["obs-note"].waitForExistence(timeout: 5))

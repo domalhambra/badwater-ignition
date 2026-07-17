@@ -95,6 +95,43 @@ public enum IMETExport {
         }
     }
 
+    /// Group **several** shifts into IMET sheets — one worksheet per operational
+    /// day, across every retained shift, so a multi-day assignment exports as one
+    /// workbook. Each shift keeps its own division/location header (crews move), and
+    /// empty shifts are skipped so an untouched day never adds a blank tab. Sheets
+    /// are ordered by shift start (then day within a shift); a duplicate tab name —
+    /// two shifts landing on the same calendar date — is disambiguated as `"<base>
+    /// (2)"` so Excel accepts the workbook. When every shift is empty, falls back to
+    /// a single header-only sheet for the earliest shift's start day.
+    public static func sheets(from shifts: [Shift], calendar: Calendar) -> [IMETSheet] {
+        let ordered = shifts.sorted { $0.started < $1.started }
+        let nonEmpty = ordered.filter { !$0.obs.isEmpty }
+        let source = nonEmpty.isEmpty ? Array(ordered.prefix(1)) : nonEmpty
+        var out: [IMETSheet] = []
+        var counts: [String: Int] = [:]
+        for shift in source {
+            for sheet in sheets(from: shift, calendar: calendar) {
+                let n = (counts[sheet.name] ?? 0) + 1
+                counts[sheet.name] = n
+                if n == 1 {
+                    out.append(sheet)
+                } else {
+                    out.append(IMETSheet(name: uniqueName(sheet.name, n), title: sheet.title, rows: sheet.rows))
+                }
+            }
+        }
+        return out
+    }
+
+    /// Disambiguate a repeated tab name as `"<base> (n)"`, keeping Excel's 31-char
+    /// limit (the base is trimmed to make room for the suffix if needed).
+    static func uniqueName(_ base: String, _ n: Int) -> String {
+        let suffix = " (\(n))"
+        let room = max(0, 31 - suffix.count)
+        let head = base.count > room ? String(base.prefix(room)) : base
+        return sanitizeSheetName(head + suffix)
+    }
+
     /// Tab name, e.g. `"Div W - 7626"` (Division W, 7/6/26).
     public static func sheetName(division: String?, _ c: DateComponents) -> String {
         let date = "\(c.month ?? 0)\(c.day ?? 0)\((c.year ?? 0) % 100)"
@@ -137,6 +174,18 @@ public enum IMETWorkbook {
     /// The complete `.xlsx` bytes for a shift — hand this to the OS share sheet.
     public static func build(from shift: Shift, calendar: Calendar = .current) -> Data {
         ZipArchive.zip(parts(for: IMETExport.sheets(from: shift, calendar: calendar)))
+    }
+
+    /// The complete `.xlsx` bytes for **several retained shifts** — one sheet per
+    /// operational day across the whole assignment. Callers pass at least one shift
+    /// (typically the archived history plus the current shift); an empty array
+    /// degenerates to a single header-only sheet so the workbook stays valid.
+    public static func build(from shifts: [Shift], calendar: Calendar = .current) -> Data {
+        var sheets = IMETExport.sheets(from: shifts, calendar: calendar)
+        if sheets.isEmpty {
+            sheets = IMETExport.sheets(from: Shift(started: Date(timeIntervalSince1970: 0)), calendar: calendar)
+        }
+        return ZipArchive.zip(parts(for: sheets))
     }
 
     static func parts(for sheets: [IMETSheet]) -> [(path: String, data: Data)] {

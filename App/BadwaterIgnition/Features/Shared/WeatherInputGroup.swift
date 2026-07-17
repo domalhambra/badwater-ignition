@@ -50,20 +50,20 @@ struct WeatherInputGroup: View {
             windControls
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.rhSource)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.windSpeedMPH > 0)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: model.windSpeedHigh > 0)
     }
 
-    /// Observed wind. Speed 0 mph reads as light/variable and hides the direction
-    /// and gust; above 0 the compass and gust appear (contained, so the rest of
-    /// the group doesn't jump). Wind is recorded on the reading, not used by PIG.
+    /// Observed wind, entered as a low–high speed range (e.g. 3–6 mph; set both
+    /// equal for a single value, both 0 for light/variable). Above 0 the gust and
+    /// compass appear — contained, so the rest of the group doesn't jump. Wind is
+    /// recorded on the reading, not used by PIG.
     @ViewBuilder private var windControls: some View {
         HStack(spacing: 10) {
-            StepperCard(label: "Wind", unit: "mph", value: $model.windSpeedMPH, range: 0...60)
-            if model.windSpeedMPH > 0 {
-                StepperCard(label: "Gust", unit: "mph", value: $model.windGustMPH, range: 0...80)
-            }
+            StepperCard(label: "Wind low", unit: "mph", value: $model.windSpeedLow, range: 0...60)
+            StepperCard(label: "Wind high", unit: "mph", value: $model.windSpeedHigh, range: 0...60)
         }
-        if model.windSpeedMPH > 0 {
+        if model.windSpeedHigh > 0 {
+            StepperCard(label: "Gust", unit: "mph", value: $model.windGustMPH, range: 0...80)
             ChipPicker(title: "Wind from", options: Wind.Direction.allCases,
                        selection: $model.windDirection, label: \.abbreviation)
         }

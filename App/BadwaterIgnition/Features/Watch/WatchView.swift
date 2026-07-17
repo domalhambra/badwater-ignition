@@ -296,10 +296,7 @@ struct WatchView: View {
                     .accessibilityIdentifier("pending-pig")
             }
             freshnessStrip
-            HStack(spacing: 10) {
-                StepperCard(label: "Obs hour", unit: "", value: hourBinding, range: 0...23)
-                StepperCard(label: "Obs min", unit: "", value: minuteBinding, range: 0...55, step: 5)
-            }
+            ObsTimeField(time: $pendingTime)
             WeatherInputGroup(model: ignition, sharedWith: "Ignition", showsDerivedHumidity: false)
             noteField
         }
@@ -421,24 +418,6 @@ struct WatchView: View {
             .padding(.top, 4)
     }
 
-    // MARK: - Obs-time bindings (hour / minute of `pendingTime`)
-
-    private var hourBinding: Binding<Int> {
-        Binding(
-            get: { Calendar.current.component(.hour, from: pendingTime) },
-            set: { pendingTime = setTime(hour: $0, minute: Calendar.current.component(.minute, from: pendingTime)) })
-    }
-
-    private var minuteBinding: Binding<Int> {
-        Binding(
-            get: { Calendar.current.component(.minute, from: pendingTime) },
-            set: { pendingTime = setTime(hour: Calendar.current.component(.hour, from: pendingTime), minute: $0) })
-    }
-
-    private func setTime(hour: Int, minute: Int) -> Date {
-        Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: pendingTime) ?? pendingTime
-    }
-
     // MARK: - Log bar
 
     /// Fixed bottom action: freezes the current estimate — plus the wind, note, and
@@ -496,6 +475,94 @@ private extension View {
         self
         #endif
     }
+}
+
+/// The observation-time control: tap the value to **type** a time directly
+/// ("1435" or "14:35"), or nudge it ±5 minutes. Two-way bound to the pending-obs
+/// timestamp, so typing, nudging, and the reset-to-now after a log all agree.
+private struct ObsTimeField: View {
+    @Binding var time: Date
+    @State private var text = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Obs time").fieldLabel()
+            HStack(spacing: 8) {
+                TextField("HH:MM", text: $text)
+                    .font(BadwaterFont.inputValue).monospacedDigit()
+                    .keyboard(numeric: true, decimal: false)
+                    .frame(maxWidth: 92)
+                    .accessibilityIdentifier("obs-time-field")
+                    .onChange(of: text) { _, v in
+                        if let hm = parseHourMinute(v) { time = settingHourMinute(time, hm.0, hm.1) }
+                    }
+                Spacer(minLength: 6)
+                nudge("−5m", -5)
+                nudge("+5m", 5)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
+        .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(BadwaterColor.hairline))
+        .onAppear { text = formatHourMinute(time) }
+        .onChange(of: time) { _, t in
+            // Resync the field when the time changed from a nudge or a post-log
+            // reset — but not from the user's own typing (parse already matches).
+            let c = Calendar.current.dateComponents([.hour, .minute], from: t)
+            let parsed = parseHourMinute(text)
+            if parsed?.0 != c.hour || parsed?.1 != c.minute { text = formatHourMinute(t) }
+        }
+        .accessibilityIdentifier("obs-time")
+    }
+
+    private func nudge(_ label: String, _ minutes: Int) -> some View {
+        Button { time = shiftingMinutes(time, minutes) } label: {
+            Text(label)
+                .font(BadwaterFont.labelSmall).fontWeight(.bold)
+                .foregroundStyle(BadwaterColor.ink)
+                .frame(minWidth: 46, minHeight: Metric.tapTarget)
+                .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Parse `"HH:MM"` / `"HHMM"` / `"H"` into clamped (hour, minute), or nil if the
+/// text doesn't yield a valid clock time (so a half-typed field leaves the time
+/// alone).
+private func parseHourMinute(_ s: String) -> (Int, Int)? {
+    let cleaned = s.filter { $0.isNumber || $0 == ":" }
+    var h = 0, m = 0
+    if cleaned.contains(":") {
+        let parts = cleaned.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        h = Int(parts[0]) ?? 0
+        m = parts.count > 1 ? (Int(parts[1]) ?? 0) : 0
+    } else {
+        let digits = cleaned.filter { $0.isNumber }
+        guard !digits.isEmpty else { return nil }
+        if digits.count <= 2 {
+            h = Int(digits) ?? 0
+        } else {
+            h = Int(digits.prefix(digits.count - 2)) ?? 0
+            m = Int(digits.suffix(2)) ?? 0
+        }
+    }
+    guard (0...23).contains(h), (0...59).contains(m) else { return nil }
+    return (h, m)
+}
+
+private func formatHourMinute(_ date: Date) -> String {
+    let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+    return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+}
+
+private func settingHourMinute(_ base: Date, _ h: Int, _ m: Int) -> Date {
+    Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: base) ?? base
+}
+
+private func shiftingMinutes(_ base: Date, _ minutes: Int) -> Date {
+    Calendar.current.date(byAdding: .minute, value: minutes, to: base) ?? base
 }
 
 #Preview {

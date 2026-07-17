@@ -155,6 +155,57 @@ final class ExportTests: XCTestCase {
         XCTAssertEqual(sheets.map { $0.rows.count }, [1, 1])
     }
 
+    // MARK: - Multi-shift (retained history) export
+
+    func testMultiShiftSpansDaysWithOwnHeaders() {
+        let cal = denver()
+        let day6 = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 9))!
+        let day7 = cal.date(from: DateComponents(year: 2026, month: 7, day: 7, hour: 10))!
+        let s1 = Shift(started: day6, obs: [
+            obs(cal: cal, ts: day6, dry: 55, depression: nil, rh: 40, wind: nil, elev: nil, loc: nil),
+        ], division: "Division W", locationName: "659 Road")
+        let s2 = Shift(started: day7, obs: [
+            obs(cal: cal, ts: day7, dry: 60, depression: nil, rh: 30, wind: nil, elev: nil, loc: nil),
+        ], division: "Division Z", locationName: "Ridge")
+
+        // Unsorted input is ordered by start; each day keeps its OWN division/location.
+        let sheets = IMETExport.sheets(from: [s2, s1], calendar: cal)
+        XCTAssertEqual(sheets.map(\.name), ["Div W - 7626", "Div Z - 7726"])
+        XCTAssertEqual(sheets.map(\.title), [
+            "7/6/26 Weather Observations - Division W, 659 Road",
+            "7/7/26 Weather Observations - Division Z, Ridge",
+        ])
+        // End-to-end workbook carries both days' titles.
+        let data = IMETWorkbook.build(from: [s1, s2], calendar: cal)
+        XCTAssertEqual(Array(data.prefix(2)), [0x50, 0x4B])
+        func has(_ s: String) -> Bool { data.range(of: Data(s.utf8)) != nil }
+        XCTAssertTrue(has("Division W, 659 Road"))
+        XCTAssertTrue(has("Division Z, Ridge"))
+    }
+
+    func testMultiShiftSkipsEmptyAndDeduplicatesSameDayNames() {
+        let cal = denver()
+        let day6a = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 9))!
+        let day6b = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 15))!
+        let empty = Shift(started: cal.date(from: DateComponents(year: 2026, month: 7, day: 5))!)
+        let s1 = Shift(started: day6a, obs: [
+            obs(cal: cal, ts: day6a, dry: 55, depression: nil, rh: 40, wind: nil, elev: nil, loc: nil),
+        ], division: "Division W")
+        let s2 = Shift(started: day6b, obs: [
+            obs(cal: cal, ts: day6b, dry: 62, depression: nil, rh: 25, wind: nil, elev: nil, loc: nil),
+        ], division: "Division W")
+
+        // Empty shift dropped; two shifts on the same date get a disambiguated 2nd tab.
+        let sheets = IMETExport.sheets(from: [empty, s1, s2], calendar: cal)
+        XCTAssertEqual(sheets.map(\.name), ["Div W - 7626", "Div W - 7626 (2)"])
+        XCTAssertEqual(sheets.map { $0.rows.count }, [1, 1])
+
+        // All-empty input still yields one valid header-only sheet.
+        let allEmpty = IMETExport.sheets(from: [empty], calendar: cal)
+        XCTAssertEqual(allEmpty.count, 1)
+        XCTAssertEqual(allEmpty[0].rows.count, 0)
+    }
+
     // MARK: - Backward-compatible Codable
 
     func testCodableOmitsNilNewFields() throws {

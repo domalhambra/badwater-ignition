@@ -52,7 +52,7 @@ final class RadioScriptTests: XCTestCase {
             addressee: "Diamond Mountain", timeLabel: "0900",
             spokenLocation: "near the 659 road", current: current, previous: previous)
         XCTAssertEqual(script,
-            "Diamond Mountain, stand by for your 0900 Weather observations. "
+            "Diamond Mountain, stand by for your 0900 Weather observation. "
             + "Taken near the 659 road at an elevation of 10,300 feet, on a Western aspect. "
             + "Dry Bulb 60 degrees, up 5, RH 25%, down 3. "
             + "Winds are 1-3 miles per hour from the West, Probability of Ignition Unshaded is 50%, Shaded is 30%. "
@@ -70,7 +70,7 @@ final class RadioScriptTests: XCTestCase {
         XCTAssertTrue(script.contains("Dry Bulb 60 degrees, RH 25%."))
         XCTAssertFalse(script.contains(", up"))
         XCTAssertFalse(script.contains(", down"))
-        XCTAssertFalse(script.contains("steady"))
+        XCTAssertFalse(script.contains("no change"))
     }
 
     // MARK: - (c) Suppression
@@ -85,7 +85,7 @@ final class RadioScriptTests: XCTestCase {
             addressee: "Diamond Mountain", timeLabel: "1000",
             spokenLocation: "near the 659 road", current: current, previous: previous)
         XCTAssertFalse(script.contains("Taken"))
-        XCTAssertTrue(script.contains("Weather observations. Dry Bulb 60 degrees"))
+        XCTAssertTrue(script.contains("Weather observation. Dry Bulb 60 degrees"))
     }
 
     func testLocationTextChangeReannounces() {
@@ -206,12 +206,12 @@ final class RadioScriptTests: XCTestCase {
         let steady = obs(dry: 60, rh: 25, elevationFeet: 10300)
         XCTAssertTrue(RadioScript.render(addressee: "", timeLabel: "1100", spokenLocation: nil,
                                          current: steady, previous: previous)
-            .contains("Dry Bulb 60 degrees, steady, RH 25%, steady."))
+            .contains("Dry Bulb 60 degrees, no change, RH 25%, no change."))
 
         let mixed = obs(dry: 62, rh: 25, elevationFeet: 10300)
         XCTAssertTrue(RadioScript.render(addressee: "", timeLabel: "1100", spokenLocation: nil,
                                          current: mixed, previous: previous)
-            .contains("Dry Bulb 62 degrees, up 2, RH 25%, steady."))
+            .contains("Dry Bulb 62 degrees, up 2, RH 25%, no change."))
     }
 
     // MARK: - (f) Wind variants
@@ -223,9 +223,9 @@ final class RadioScriptTests: XCTestCase {
         XCTAssertEqual(Wind(speed: .init(low: 4, high: 6), direction: nil).spokenPhrase, "4-6 miles per hour")
         XCTAssertEqual(Wind.lightVariable().spokenPhrase, "light and variable")
         XCTAssertEqual(Wind.measured(.init(low: 3, high: 5), .west, gust: 12).spokenPhrase,
-                       "3-5 miles per hour from the West, gusts up to 12")
+                       "3-5 miles per hour from the West, with gusts up to 12")
         XCTAssertEqual(Wind.lightVariable(gust: 12).spokenPhrase,
-                       "light and variable, gusts up to 12")
+                       "light and variable, with gusts up to 12")
     }
 
     func testNilWindOmitsWindsSentence() {
@@ -243,7 +243,7 @@ final class RadioScriptTests: XCTestCase {
         for name in ["", "   "] {
             let script = RadioScript.render(addressee: name, timeLabel: "0900", spokenLocation: nil,
                                             current: current, previous: nil)
-            XCTAssertTrue(script.hasPrefix("Stand by for your 0900 Weather observations."))
+            XCTAssertTrue(script.hasPrefix("Stand by for your 0900 Weather observation."))
         }
     }
 

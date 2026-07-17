@@ -3,7 +3,7 @@ import Foundation
 /// Renders the spoken radio broadcast for a logged observation, in the standard
 /// crew script format:
 ///
-/// > "Diamond Mountain, stand by for your 0900 Weather observations. Taken near
+/// > "Diamond Mountain, stand by for your 0900 Weather observation. Taken near
 /// > the 659 road at an elevation of 10,300 feet, on a Western aspect. Dry Bulb
 /// > 60 degrees, up 5, RH 25%, down 3. Winds are 1-3 miles per hour from the West,
 /// > Probability of Ignition Unshaded is 50%, Shaded is 30%. I repeat, Dry Bulb
@@ -34,8 +34,8 @@ public enum RadioScript {
         // capital W, lowercase o. It's byte-exact from the field script; leave it.
         let name = addressee.trimmingCharacters(in: .whitespaces)
         sentences.append(name.isEmpty
-            ? "Stand by for your \(timeLabel) Weather observations."
-            : "\(name), stand by for your \(timeLabel) Weather observations.")
+            ? "Stand by for your \(timeLabel) Weather observation."
+            : "\(name), stand by for your \(timeLabel) Weather observation.")
 
         if !suppressLocation,
            shouldSpeakLocation(current: current, previous: previous,
@@ -127,7 +127,7 @@ public enum RadioScript {
     }
 
     static func delta(_ d: Int) -> String {
-        if d == 0 { return ", steady" }
+        if d == 0 { return ", no change" }
         return d > 0 ? ", up \(d)" : ", down \(-d)"
     }
 

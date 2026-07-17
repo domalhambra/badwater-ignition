@@ -1,6 +1,11 @@
 import SwiftUI
 import Combine
 import BadwaterCore
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// The **Watch** screen (Weather Watch — the shift observation log).
 ///
@@ -37,8 +42,11 @@ struct WatchView: View {
 
     /// Standard hourly weather-watch cadence for the next observation.
     private let obsCadence: TimeInterval = 60 * 60
+    /// Which metric the shift trend plots.
+    @State private var trendMetric: ObservationMetric = .probabilityOfIgnitionUnshaded
 
     private var hasObs: Bool { !model.shift.obs.isEmpty }
+    private var canTrend: Bool { model.shift.obs.count >= 2 }
 
     var body: some View {
         ScrollView {
@@ -51,7 +59,7 @@ struct WatchView: View {
                 } else {
                     emptyState
                 }
-                if trendPoints.count >= 2 { trendSection }
+                if canTrend { trendSection }
                 if hasObs { shiftLogSection }
                 siteSection
                 captureCard
@@ -173,29 +181,56 @@ struct WatchView: View {
                 .foregroundStyle(BadwaterColor.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
+                .padding(.top, 10)   // leave room for the inset Copy pill
                 .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BadwaterColor.hairline))
+                .overlay(alignment: .topTrailing) {
+                    Button { copyToPasteboard(script) } label: {
+                        Text("Copy")
+                            .font(BadwaterFont.labelSmall).fontWeight(.bold)
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(BadwaterColor.surface, in: Capsule())
+                            .overlay(Capsule().strokeBorder(BadwaterColor.accent, lineWidth: 1))
+                            .foregroundStyle(BadwaterColor.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(7)
+                    .accessibilityIdentifier("copy-broadcast")
+                }
                 .accessibilityIdentifier("broadcast-script")
-            ShareLink(item: script) { actionLabel("Share broadcast", "antenna.radiowaves.left.and.right") }
-                .accessibilityIdentifier("share-broadcast")
         }
     }
 
     // MARK: - Trend (M5)
 
-    private var trendPoints: [TrendPoint] {
-        model.series(of: .probabilityOfIgnitionUnshaded).compactMap { pt in
+    private func trendPoints(_ metric: ObservationMetric) -> [TrendPoint] {
+        model.series(of: metric).compactMap { pt in
             pt.value.map { TrendPoint(date: pt.date, value: $0) }
         }
     }
 
     private var trendSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Trend", annotation: "Unshaded PIG")
-            ShiftTrendChart(points: trendPoints)
-                .padding(12)
-                .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BadwaterColor.hairline))
+        let points = trendPoints(trendMetric)
+        // Percent metrics pin to 0–100; °F metrics (temp / dew point) auto-fit.
+        let vals = points.map(\.value)
+        let domain: ClosedRange<Int> = trendMetric.unit == "%"
+            ? 0...100
+            : ((vals.min() ?? 0) - 5)...((vals.max() ?? 100) + 5)
+        return VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: "Trend", annotation: trendMetric.shortLabel)
+            ChipPicker(title: "Metric", options: ObservationMetric.allCases,
+                       selection: $trendMetric, label: \.shortLabel)
+            if points.count >= 2 {
+                ShiftTrendChart(points: points, domain: domain, unit: trendMetric.unit)
+                    .padding(12)
+                    .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BadwaterColor.hairline))
+            } else {
+                Text("Not enough observations record \(trendMetric.shortLabel.lowercased()) yet.")
+                    .font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 10)
+            }
         }
     }
 
@@ -471,7 +506,9 @@ struct WatchView: View {
         return Button {
             model.logObs(at: pendingTime, wind: ignition.wind, note: note.isEmpty ? nil : note)
             note = ""
-            pendingTime = Date()
+            // Pre-fill the next hourly slot so the operator isn't re-entering the
+            // time every observation (an off-hour read can still be tap-typed).
+            pendingTime = pendingTime.addingTimeInterval(obsCadence)
         } label: {
             HStack(spacing: 10) {
                 Text(gated ? "Confirm site to log" : "Log Observation")
@@ -606,6 +643,17 @@ private func settingHourMinute(_ base: Date, _ h: Int, _ m: Int) -> Date {
 
 private func shiftingMinutes(_ base: Date, _ minutes: Int) -> Date {
     Calendar.current.date(byAdding: .minute, value: minutes, to: base) ?? base
+}
+
+/// Copy text to the system pasteboard — the inset "Copy" pill on the broadcast
+/// panel. Platform-guarded so the view compiles for iOS and macOS.
+private func copyToPasteboard(_ text: String) {
+    #if canImport(UIKit)
+    UIPasteboard.general.string = text
+    #elseif canImport(AppKit)
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
+    #endif
 }
 
 #Preview {

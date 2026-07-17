@@ -8,6 +8,7 @@ use. No license to use, copy, modify, or distribute is granted by default.
 >>> open-source release, drop in the full text of, e.g., the MIT or Apache-2.0
 >>> license and update the copyright holder above.
 
-Third-party and public-domain data (NWCG IRPG / PMS 437) are covered separately
+Third-party and public-domain data (the NWCG IRPG, PMS 461, and the NWCG
+Temperature, Relative Humidity, and Dew Point Tables, PMS 437) are covered separately
 — see ATTRIBUTION.md. Those U.S. government works are in the public domain and
 are not claimed by this copyright.

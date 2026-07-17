@@ -31,6 +31,8 @@ struct WatchView: View {
     @State private var lonText = ""
     /// Whether an undo affordance for the last delete is showing.
     @State private var showUndo = false
+    /// The logged observation being corrected in the edit sheet (nil = closed).
+    @State private var editingObs: WeatherObs?
     /// Drives the IMET `.xlsx` export sheet.
     @State private var exportingWorkbook = false
     /// Guards the destructive new-shift action behind a confirm.
@@ -70,6 +72,12 @@ struct WatchView: View {
             .padding(Metric.screenPadding)
         }
         .safeAreaInset(edge: .bottom) { logBar }
+        .sheet(item: $editingObs) { obs in
+            ObsEditSheet(original: obs) { time, dry, rh, wet, wind, editedNote in
+                model.updateObs(id: obs.id, timestamp: time, dryBulbF: dry,
+                                relativeHumidity: rh, wetBulbF: wet, wind: wind, note: editedNote)
+            }
+        }
         .background(BadwaterColor.background)
         .navigationTitle("Obs")
         .onReceive(dueTick) { now = $0 }
@@ -270,6 +278,15 @@ struct WatchView: View {
                 }
             }
             Spacer(minLength: 8)
+            Button { editingObs = obs } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(BadwaterColor.accent)
+                    .frame(width: Metric.tapTarget, height: Metric.tapTarget)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("edit-obs")
+            .accessibilityLabel("Edit \(obs.timeLabel()) observation")
             Button(role: .destructive) {
                 model.removeObs(id: obs.id)
                 showUndo = true
@@ -643,6 +660,127 @@ private func settingHourMinute(_ base: Date, _ h: Int, _ m: Int) -> Date {
 
 private func shiftingMinutes(_ base: Date, _ minutes: Int) -> Date {
     Calendar.current.date(byAdding: .minute, value: minutes, to: base) ?? base
+}
+
+/// The edit sheet for a logged observation — correct a mis-entered reading, time,
+/// wind, or note without deleting and re-logging (the crew's "one wrong digit"
+/// fix path). Its inputs are isolated `@State` seeded from the obs, so editing
+/// never touches the live Ignition tab or the pending obs. `rhSource` is fixed to
+/// how the reading was taken: a slung obs edits its wet bulb (RH / dew point
+/// re-derive against the obs's own band); a direct obs edits RH.
+private struct ObsEditSheet: View {
+    let original: WeatherObs
+    /// Commits the corrected fields; the parent calls `model.updateObs`, which
+    /// recomputes the estimate, re-renders this obs's broadcast, and persists.
+    let onSave: (_ timestamp: Date, _ dryBulbF: Int, _ relativeHumidity: Int,
+                 _ wetBulbF: Int, _ wind: Wind?, _ note: String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var time: Date
+    @State private var dryBulb: Int
+    @State private var rh: Int
+    @State private var wetBulb: Int
+    @State private var windLow: Int
+    @State private var windHigh: Int
+    @State private var gust: Int
+    @State private var direction: Wind.Direction
+    @State private var note: String
+
+    init(original: WeatherObs,
+         onSave: @escaping (Date, Int, Int, Int, Wind?, String) -> Void) {
+        self.original = original
+        self.onSave = onSave
+        let input = original.estimate.input
+        _time = State(initialValue: original.timestamp)
+        _dryBulb = State(initialValue: input.dryBulbF)
+        _rh = State(initialValue: input.relativeHumidity)
+        // Reconstruct the wet bulb from the frozen depression (slung obs only; a
+        // direct obs has no depression, so this seeds to the dry bulb).
+        _wetBulb = State(initialValue: input.dryBulbF - (original.humidity?.wetBulbDepressionF ?? 0))
+        let w = original.wind
+        _windLow = State(initialValue: w?.speed?.low ?? 0)
+        _windHigh = State(initialValue: w?.speed?.high ?? 0)
+        _gust = State(initialValue: w?.gust ?? 0)
+        _direction = State(initialValue: w?.direction ?? .north)
+        _note = State(initialValue: original.note ?? "")
+    }
+
+    private var isSlung: Bool { original.rhSource == .wetBulb }
+
+    /// Rebuild the edited wind, mirroring `IgnitionModel.wind` (no high speed ⇒
+    /// light/variable, still carrying any gust) — but preserve "not recorded"
+    /// (`nil`) for an obs that never had wind and still has none entered, so a
+    /// dry-bulb-only correction can't fabricate a light-and-variable broadcast.
+    private var editedWind: Wind? {
+        let g = gust > 0 ? gust : nil
+        guard windHigh > 0 else {
+            return (original.wind == nil && g == nil) ? nil : .lightVariable(gust: g)
+        }
+        return .measured(Wind.SpeedRange(low: min(windLow, windHigh), high: windHigh),
+                         direction, gust: g)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: Metric.cardSpacing) {
+                    Text("Correcting the \(formatHourMinute(original.timestamp)) reading — recomputes PIG. Neighboring broadcasts are unchanged.")
+                        .font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    ObsTimeField(time: $time)
+
+                    HStack(spacing: 10) {
+                        StepperCard(label: "Dry bulb", unit: "°F", value: $dryBulb, range: 10...130)
+                        if isSlung {
+                            StepperCard(label: "Wet bulb", unit: "°F", value: $wetBulb, range: 10...130)
+                        } else {
+                            StepperCard(label: "Rel. humidity", unit: "%", value: $rh, range: 0...100)
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        StepperCard(label: "Wind low", unit: "mph", value: $windLow, range: 0...60)
+                        StepperCard(label: "Wind high", unit: "mph", value: $windHigh, range: 0...60)
+                    }
+                    if windHigh > 0 {
+                        StepperCard(label: "Gust", unit: "mph", value: $gust, range: 0...80)
+                        ChipPicker(title: "Wind from", options: Wind.Direction.allCases,
+                                   selection: $direction, label: \.abbreviation)
+                    }
+
+                    Text("Note").fieldLabel()
+                    TextField("Note (optional)", text: $note, axis: .vertical)
+                        .font(BadwaterFont.body)
+                        .lineLimit(1...3)
+                        .padding(11)
+                        .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(BadwaterColor.hairline))
+                        .accessibilityIdentifier("edit-obs-note")
+                }
+                .padding(Metric.screenPadding)
+            }
+            .background(BadwaterColor.background)
+            .navigationTitle("Edit observation")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("edit-cancel")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(time, dryBulb, rh, wetBulb, editedWind, note)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                    .accessibilityIdentifier("edit-save")
+                }
+            }
+        }
+    }
 }
 
 /// Copy text to the system pasteboard — the inset "Copy" pill on the broadcast

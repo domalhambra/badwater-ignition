@@ -115,6 +115,74 @@ final class WeatherWatchModel {
         return obs
     }
 
+    /// Correct a logged observation in place — the crew's fix path for a
+    /// mis-entered reading, so one wrong digit doesn't force a delete and a full
+    /// re-entry. The reading's estimate (and, for a slung obs, its humidity / dew
+    /// point) is recomputed from the corrected dry bulb and RH-or-wet-bulb against
+    /// the obs's OWN frozen site factors (aspect, slope, elevation delta) and sling
+    /// band — never the live Ignition tab's state. Month and time-of-day follow the
+    /// corrected timestamp. The broadcast script is re-rendered against the
+    /// corrected reading's chronological predecessor; neighboring obs keep the
+    /// script they broadcast (matching delete — a later edit never rewrites what
+    /// already went out over the air). Absolute elevation, GPS, and spoken location
+    /// are preserved. `rhSource` is intentionally not editable: a reading stays the
+    /// kind it was taken as (slung or direct), so its dew-point record can't be
+    /// fabricated by flipping the source after the fact. Returns nil if no obs has
+    /// that id.
+    @discardableResult
+    func updateObs(id: UUID, timestamp: Date, dryBulbF: Int,
+                   relativeHumidity: Int, wetBulbF: Int, wind: Wind?, note: String?,
+                   calendar: Calendar = .current) -> WeatherObs? {
+        guard let idx = shift.obs.firstIndex(where: { $0.id == id }) else { return nil }
+        let old = shift.obs[idx]
+        let comps = calendar.dateComponents([.month, .hour, .minute], from: timestamp)
+
+        // A slung obs re-slings against its own frozen band, so the corrected wet
+        // bulb re-derives RH and dew point exactly as at log time; a direct obs
+        // takes the typed RH and keeps no humidity record.
+        let humidity: HumidityResult?
+        let effectiveRH: Int
+        if old.rhSource == .wetBulb, let band = old.humidity?.elevationBand {
+            let h = Psychrometrics.compute(dryBulbF: dryBulbF, wetBulbF: wetBulbF, band: band)
+            humidity = h
+            effectiveRH = h.relativeHumidity
+        } else {
+            humidity = nil
+            effectiveRH = relativeHumidity
+        }
+
+        let input = IgnitionInput(
+            dryBulbF: dryBulbF,
+            relativeHumidity: effectiveRH,
+            month: comps.month ?? old.estimate.input.month,
+            timeOfDay: TimeOfDay.from(hour: comps.hour ?? 12, minute: comps.minute ?? 0),
+            aspect: old.estimate.input.aspect,
+            slope: old.estimate.input.slope,
+            elevationDelta: old.estimate.input.elevationDelta)
+
+        var updated = WeatherObs(
+            id: old.id,
+            timestamp: timestamp,
+            estimate: IgnitionCalculator.estimate(input),
+            humidity: humidity,
+            rhSource: old.rhSource,
+            note: note.flatMap { n in
+                let t = n.trimmingCharacters(in: .whitespacesAndNewlines)
+                return t.isEmpty ? nil : t
+            },
+            wind: wind,
+            elevationFeet: old.elevationFeet,
+            location: old.location,
+            spokenLocation: old.spokenLocation)
+        updated.broadcastText = RadioScript.render(
+            addressee: addressee, timeLabel: updated.timeLabel(calendar),
+            spokenLocation: updated.spokenLocation,
+            current: updated,
+            previous: chronologicalPrevious(before: updated.timestamp, excluding: updated.id))
+        shift.obs[idx] = updated
+        return updated
+    }
+
     /// The obs immediately preceding `t` in time (not append order), optionally
     /// excluding one id — the "previous" for deltas and location suppression.
     private func chronologicalPrevious(before t: Date, excluding id: UUID? = nil) -> WeatherObs? {

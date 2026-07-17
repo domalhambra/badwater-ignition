@@ -1,0 +1,17 @@
+{
+  "name": "Badwater Obs",
+  "short_name": "Obs",
+  "description": "Field-fast Probability of Ignition and hourly weather observations from the NWCG IRPG (PMS 461) and belt-weather-kit tables. Works offline.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F0E0B",
+  "theme_color": "#14120D",
+  "icons": [
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ]
+}

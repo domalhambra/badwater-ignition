@@ -52,7 +52,9 @@ struct WatchView: View {
     @State private var trendMetric: ObservationMetric = .probabilityOfIgnitionUnshaded
 
     private var hasObs: Bool { !model.shift.obs.isEmpty }
-    private var canTrend: Bool { model.shift.obs.count >= 2 }
+    /// The trend overlays every retained day, so it's available once ≥2 obs exist
+    /// across the history and the current shift (not just the current one).
+    private var canTrend: Bool { model.allShifts.reduce(0) { $0 + $1.obs.count } >= 2 }
     /// There's something to export/manage when the current shift has obs or any day
     /// is retained in history (so the export + record controls survive a fresh shift).
     private var hasExportableData: Bool { hasObs || !model.history.isEmpty }
@@ -219,25 +221,35 @@ struct WatchView: View {
 
     // MARK: - Trend (M5)
 
-    private func trendPoints(_ metric: ObservationMetric) -> [TrendPoint] {
-        model.series(of: metric).compactMap { pt in
-            pt.value.map { TrendPoint(date: pt.date, value: $0) }
+    /// One line per retained local day, points projected onto a shared clock, most
+    /// recent day flagged so the chart can draw it solid.
+    private func dayLines(_ metric: ObservationMetric) -> [DayLine] {
+        let series = model.daySeries(of: metric)
+        let latest = series.last?.day
+        return series.map { entry in
+            DayLine(id: entry.day,
+                    label: Self.trendDayFormatter.string(from: entry.day),
+                    isLatest: entry.day == latest,
+                    points: entry.points.map {
+                        TrendPoint(id: $0.date, clock: Self.clockProjection($0.date), value: $0.value)
+                    })
         }
     }
 
     private var trendSection: some View {
-        let points = trendPoints(trendMetric)
+        let lines = dayLines(trendMetric)
+        let allVals = lines.flatMap { $0.points.map(\.value) }
         // Percent metrics pin to 0–100; °F metrics (temp / dew point) auto-fit.
-        let vals = points.map(\.value)
         let domain: ClosedRange<Int> = trendMetric.unit == "%"
             ? 0...100
-            : ((vals.min() ?? 0) - 5)...((vals.max() ?? 100) + 5)
+            : ((allVals.min() ?? 0) - 5)...((allVals.max() ?? 100) + 5)
+        let annotation = lines.count > 1 ? "\(trendMetric.shortLabel) · \(lines.count) days" : trendMetric.shortLabel
         return VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: "Trend", annotation: trendMetric.shortLabel)
+            SectionHeader(title: "Trend", annotation: annotation)
             ChipPicker(title: "Metric", options: ObservationMetric.allCases,
                        selection: $trendMetric, label: \.shortLabel)
-            if points.count >= 2 {
-                ShiftTrendChart(points: points, domain: domain, unit: trendMetric.unit)
+            if allVals.count >= 2 {
+                ShiftTrendChart(days: lines, domain: domain, unit: trendMetric.unit)
                     .padding(12)
                     .background(BadwaterColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BadwaterColor.hairline))
@@ -249,6 +261,21 @@ struct WatchView: View {
             }
         }
     }
+
+    /// Project a timestamp onto a fixed reference day, keeping only its wall-clock
+    /// hour+minute, so every day's line shares one time-of-day x-axis.
+    private static func clockProjection(_ date: Date) -> Date {
+        let cal = Calendar.current
+        let c = cal.dateComponents([.hour, .minute], from: date)
+        return cal.date(from: DateComponents(year: 2001, month: 1, day: 1,
+                                             hour: c.hour ?? 0, minute: c.minute ?? 0)) ?? date
+    }
+
+    private static let trendDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate("MMMd")
+        return f
+    }()
 
     // MARK: - Shift log + delete/undo (M3)
 

@@ -14,6 +14,11 @@ import BadwaterCore
 final class WeatherWatchModel {
     /// The current shift's logged observations.
     var shift: Shift { didSet { persistShift() } }
+    /// Completed shifts, retained across days (newest first). A crew that starts a
+    /// fresh shift each day builds up a multi-day record here; the IMET workbook
+    /// exports every retained day, and the operator clears days when done. Empty
+    /// shifts are never archived.
+    var history: [Shift] { didSet { persistHistory() } }
     /// Radio addressee for the broadcast script (e.g. "Diamond Mountain").
     /// Deliberately stored app-wide, not per-shift: the radio net usually
     /// outlives a shift, so it survives `startNewShift()`.
@@ -44,6 +49,7 @@ final class WeatherWatchModel {
         self.ignition = ignition
         self.store = store
         self.shift = Self.decode(Shift.self, from: store.data(forKey: Keys.shift)) ?? Shift(started: now)
+        self.history = Self.decode([Shift].self, from: store.data(forKey: Keys.history)) ?? []
         self.addressee = store.string(forKey: Keys.addressee) ?? ""
         self.siteElevationFeet = store.object(forKey: Keys.siteElevation) as? Int
         self.siteCoordinate = Self.decode(GeoPoint.self, from: store.data(forKey: Keys.siteCoordinate))
@@ -196,10 +202,38 @@ final class WeatherWatchModel {
     /// `(timestamp, value)` points for a metric across the shift, chronological.
     func series(of metric: ObservationMetric) -> [(date: Date, value: Int?)] { shift.series(of: metric) }
 
+    /// Close out the current shift and start a fresh one. A shift with any
+    /// observations is archived to ``history`` (newest first) rather than
+    /// discarded, so the record survives into the next day's shift and the IMET
+    /// export can span the whole assignment. An empty shift is simply replaced.
     func startNewShift(at now: Date = Date()) {
+        if !shift.obs.isEmpty { history.insert(shift, at: 0) }
         shift = Shift(started: now)
         // A new shift means a fresh site review before the first broadcast.
         siteConfirmedAt = nil
+    }
+
+    /// Every retained shift plus the current one — the source for the multi-day
+    /// IMET export and the day count. Order is irrelevant; the export sorts by
+    /// start.
+    var allShifts: [Shift] { history + [shift] }
+
+    /// Distinct local calendar days that carry at least one observation, across the
+    /// retained history and the current shift. Drives the "several days retained"
+    /// reminder.
+    func retainedObsDayCount(calendar: Calendar = .current) -> Int {
+        let days = allShifts.flatMap(\.obs).map { calendar.startOfDay(for: $0.timestamp) }
+        return Set(days).count
+    }
+
+    /// Remove one archived shift (a retained day) from the history.
+    func removeArchivedShift(id: UUID) {
+        history.removeAll { $0.id == id }
+    }
+
+    /// Clear all retained history. The current shift is untouched.
+    func clearHistory() {
+        history = []
     }
 
     /// Delete a mis-entered observation. The shift re-persists via `didSet`, and
@@ -245,10 +279,11 @@ final class WeatherWatchModel {
         shift.locationName = locationName
     }
 
-    /// The IMET `.xlsx` workbook bytes for the current shift (one sheet per local
-    /// day) — hand this to the OS share sheet.
+    /// The IMET `.xlsx` workbook bytes for every retained shift plus the current
+    /// one — one sheet per local day across the whole assignment. Hand to the OS
+    /// share sheet.
     func imetWorkbookData(calendar: Calendar = .current) -> Data {
-        IMETWorkbook.build(from: shift, calendar: calendar)
+        IMETWorkbook.build(from: allShifts, calendar: calendar)
     }
 
     /// A tab-separated, Notes-app-ready table of the shift's observations —
@@ -318,6 +353,7 @@ final class WeatherWatchModel {
     // MARK: - Persistence (JSON blobs; arrays grow across a shift/season)
 
     private func persistShift() { store.set(try? JSONEncoder().encode(shift), forKey: Keys.shift) }
+    private func persistHistory() { store.set(try? JSONEncoder().encode(history), forKey: Keys.history) }
     private func persistAddressee() { store.set(addressee, forKey: Keys.addressee) }
     private func persistSiteElevation() {
         // Store nil as an absent key (not NSNull) so a fresh model reads it back as nil.
@@ -340,6 +376,7 @@ final class WeatherWatchModel {
 
     private enum Keys {
         static let shift = "watch.shift"
+        static let history = "watch.history"
         static let addressee = "watch.addressee"
         static let siteElevation = "watch.siteElevationFeet"
         static let siteCoordinate = "watch.siteCoordinate"

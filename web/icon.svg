@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Badwater Obs">
+  <defs>
+    <linearGradient id="flame" x1="256" y1="120" x2="256" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E8B84B"/>
+      <stop offset="0.45" stop-color="#DD6A30"/>
+      <stop offset="1" stop-color="#B0431F"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#141210"/>
+  <rect x="10" y="10" width="492" height="492" rx="104" fill="none" stroke="#1F6E7A" stroke-width="10" opacity="0.9"/>
+  <path fill="url(#flame)" d="M262 96
+    c 20 66 70 92 70 168
+    c 0 22 -8 40 -22 54
+    c 8 -20 6 -40 -8 -58
+    c -6 34 -26 48 -40 70
+    c -12 18 -14 40 -2 60
+    c -34 -8 -60 -40 -60 -84
+    c 0 -46 30 -74 44 -112
+    c 10 -28 12 -60 18 -98 z"/>
+  <path fill="#F0ECDF" opacity="0.92" d="M256 250
+    c 10 22 30 34 30 62
+    c 0 24 -18 44 -42 44
+    c -22 0 -38 -18 -38 -40
+    c 0 -26 34 -40 50 -66 z"/>
+  <circle cx="256" cy="430" r="14" fill="#64B9C3"/>
+</svg>

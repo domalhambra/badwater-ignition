@@ -371,6 +371,7 @@ const S={
   // watch
   obs:[], addressee:"", locationName:"", division:"", siteElevationFeet:null, coordLat:"", coordLon:"",
   siteConfirmed:false, lastRemoved:null, undo:false, editing:null, edit:null,
+  history:[], shiftDateMs:0,
   pendingMin:now.getHours()*60+now.getMinutes(), note:"", trendMetric:"pigU"
 };
 let obsSeq=1;
@@ -387,6 +388,15 @@ function loadState(){ try{
     if(typeof d.obsSeq==="number"&&d.obsSeq>obsSeq)obsSeq=d.obsSeq; }
 }catch(e){} }
 loadState();
+if(!S.shiftDateMs)S.shiftDateMs=now.getTime();
+
+// ---- retained shift history (each shift = one day; the crew starts a new one
+// daily). A shift snapshot is {obs, division, locationName, dateMs}. ----
+function allShifts(){ return S.history.concat([{obs:S.obs,division:S.division,locationName:S.locationName,dateMs:S.shiftDateMs}]); }
+function dayShort(ms){ try{ return new Date(ms).toLocaleDateString(undefined,{month:"short",day:"numeric"}); }catch(e){ const d=new Date(ms); return (d.getMonth()+1)+"/"+d.getDate(); } }
+function dateCode(ms){ const d=new Date(ms); return `${d.getMonth()+1}${d.getDate()}${d.getFullYear()%100}`; }
+function dateSlash(ms){ const d=new Date(ms); return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()%100}`; }
+function retainedDayCount(){ const s=new Set(); allShifts().forEach(sh=>{ if(sh.obs.length)s.add(new Date(sh.dateMs).toDateString()); }); return s.size; }
 
 //====================== Helpers ======================
 const scr=()=>document.getElementById("screen");
@@ -531,13 +541,55 @@ function obsDueHtml(){
     else { caution=false; icon="◷"; msg=`Next obs ${clockLabel(due%1440)} · in ${mins} min`; } }
   return `<div class="strip ${caution?'caution':''}"><span>${icon}</span><span>${msg}</span></div>`;
 }
+// Trend overlay — one line per retained day (history + current) on a shared
+// time-of-day axis; most recent day solid teal + dotted, earlier days faded/dashed.
+function trendSectionHtml(){
+  const total=allShifts().reduce((n,sh)=>n+sh.obs.length,0);
+  if(total<2)return "";
+  const M=METRICS.find(m=>m.k===S.trendMetric)||METRICS[0];
+  const chips=METRICS.map(m=>`<button class="chip ${m.k===S.trendMetric?'on':''}" data-action="setTrend" data-k="${m.k}">${m.label}</button>`).join("");
+  const dayser=allShifts().map(sh=>({dateMs:sh.dateMs,
+      pts:sh.obs.slice().sort((a,b)=>a.min-b.min).map(o=>({min:o.min,v:M.f(o)})).filter(p=>p.v!=null&&!isNaN(p.v))}))
+    .filter(d=>d.pts.length).sort((a,b)=>a.dateMs-b.dateMs);
+  const allv=dayser.flatMap(d=>d.pts.map(p=>p.v));
+  const allmin=dayser.flatMap(d=>d.pts.map(p=>p.min));
+  let svg, annotation=M.label;
+  if(allv.length>=2){
+    let lo=M.pct?0:Math.min(...allv)-5, hi=M.pct?100:Math.max(...allv)+5; if(hi<=lo)hi=lo+1;
+    let xlo=Math.min(...allmin), xhi=Math.max(...allmin); if(xhi<=xlo)xhi=xlo+60;
+    const W=280,H=92,pad=8;
+    const X=m=>pad+(W-2*pad)*((m-xlo)/(xhi-xlo));
+    const Y=v=>pad+(H-2*pad)*(1-(v-lo)/(hi-lo));
+    const latestMs=Math.max(...dayser.map(d=>d.dateMs));
+    const n=Math.max(dayser.length-1,1);
+    const paths=dayser.map((d,i)=>{
+      const isLatest=d.dateMs===latestMs;
+      const line=d.pts.map(p=>`${X(p.min).toFixed(1)},${Y(p.v).toFixed(1)}`).join(" ");
+      const op=isLatest?1:(0.3+0.4*(i/n));
+      const dash=isLatest?"":' stroke-dasharray="4 3"';
+      const dots=isLatest?d.pts.map(p=>`<circle cx="${X(p.min).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3" fill="var(--teal)"/>`).join(""):"";
+      return `<polyline points="${line}" fill="none" stroke="${isLatest?'var(--teal)':'var(--muted)'}" stroke-opacity="${op.toFixed(2)}" stroke-width="${isLatest?2.5:1.5}" stroke-linejoin="round" stroke-linecap="round"${dash}/>${dots}`;
+    }).join("");
+    svg=`<div class="spark"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none">${paths}</svg></div>`;
+    if(dayser.length>1){
+      annotation=`${M.label} · ${dayser.length} days`;
+      const leg=dayser.slice().sort((a,b)=>b.dateMs-a.dateMs).map(d=>{
+        const isLatest=d.dateMs===latestMs;
+        return `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-family:var(--mono);font-size:9px;color:var(--muted)"><span style="width:12px;height:2px;display:inline-block;background:${isLatest?'var(--teal)':'var(--muted)'};opacity:${isLatest?1:.6}"></span>${dayShort(d.dateMs)}</span>`;
+      }).join("");
+      svg+=`<div style="margin-top:6px;display:flex;flex-wrap:wrap">${leg}</div>`;
+    }
+  } else { svg=`<div class="lbl" style="padding:8px 2px">Not enough obs record this metric yet.</div>`; }
+  return `<div class="group"><div class="sect"><span class="st">Trend · ${annotation}</span></div><div class="chips" style="margin-bottom:2px">${chips}</div>${svg}</div>`;
+}
+
 function renderWatch(){
   const obs=S.obs.slice().sort((a,b)=>b.min-a.min);
   const latest=obs[0];
   const pend=pendingEstimate();
   const gated=!S.siteConfirmed;
 
-  let heroHtml,broadcastHtml="",trendHtml="";
+  let heroHtml,broadcastHtml="";
   if(latest){
     heroHtml=`<div class="hero">
       <div class="htop"><span class="htime">${hhmm(latest.min)}</span><span class="lbl">Latest</span></div>
@@ -549,24 +601,6 @@ function renderWatch(){
     </div>`;
     broadcastHtml=`<div class="group"><div class="sect"><span class="st">Broadcast · Radio</span></div>
       <div class="broadcast" style="position:relative;padding-top:22px">${esc(latest.broadcast)}<button class="copypill" data-action="copy" data-kind="broadcast">Copy</button></div></div>`;
-    // trend (metric-selectable)
-    if(obs.length>=2){
-      const M=METRICS.find(m=>m.k===S.trendMetric)||METRICS[0];
-      const chips=METRICS.map(m=>`<button class="chip ${m.k===S.trendMetric?'on':''}" data-action="setTrend" data-k="${m.k}">${m.label}</button>`).join("");
-      const tp=obs.slice().sort((a,b)=>a.min-b.min).map(o=>({min:o.min,v:M.f(o)})).filter(p=>p.v!=null&&!isNaN(p.v));
-      let svg;
-      if(tp.length>=2){
-        const vs=tp.map(p=>p.v); let lo=M.pct?0:Math.min(...vs)-5, hi=M.pct?100:Math.max(...vs)+5; if(hi<=lo)hi=lo+1;
-        const W=200,H=64,pad=6;
-        const xs=tp.map((p,i)=>pad+(W-2*pad)*(i/(tp.length-1)));
-        const ys=tp.map(p=>pad+(H-2*pad)*(1-(p.v-lo)/(hi-lo)));
-        const line=xs.map((x,i)=>`${x.toFixed(1)},${ys[i].toFixed(1)}`).join(" ");
-        const area=`${pad},${H-pad} `+line+` ${W-pad},${H-pad}`;
-        const dots=xs.map((x,i)=>`<circle cx="${x.toFixed(1)}" cy="${ys[i].toFixed(1)}" r="3" fill="var(--teal)"/>`).join("");
-        svg=`<div class="spark"><svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" preserveAspectRatio="none"><polygon points="${area}" fill="var(--chipTint)"/><polyline points="${line}" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${dots}</svg></div>`;
-      } else { svg=`<div class="lbl" style="padding:8px 2px">Not enough obs record this metric yet.</div>`; }
-      trendHtml=`<div class="group"><div class="sect"><span class="st">Trend · ${M.label}</span></div><div class="chips" style="margin-bottom:2px">${chips}</div>${svg}</div>`;
-    }
   } else {
     heroHtml=`<div class="empty"><div class="t">No observations yet</div><div class="lbl">Confirm the site, set the reading, then Log Observation</div></div>`;
   }
@@ -609,15 +643,28 @@ function renderWatch(){
     <div class="field"><div class="lbl">Note (optional)</div><textarea data-field="note" rows="2" placeholder="e.g. sun on thermometer">${esc(S.note)}</textarea></div>
   </div>`;
 
-  const exportHtml = obs.length?`<div class="group"><div class="sect"><span class="st">Export shift · Share</span></div>
+  const hasData = obs.length || S.history.length;
+  const days = retainedDayCount();
+  const exportHtml = hasData?`<div class="group"><div class="sect"><span class="st">Export · ${days>1?days+" days":"Spreadsheet + notes"}</span></div>
     <button class="btn ghost" data-action="exportXlsx">▦ IMET .xlsx</button>
-    <div class="btnrow"><button class="btn ghost" data-action="copy" data-kind="spot">Spot obs</button><button class="btn ghost" data-action="copy" data-kind="notes">Notes table</button></div>
-    <button class="btn ghost" data-action="newShift">Start new shift</button></div>`:"";
+    <div class="btnrow"><button class="btn ghost" data-action="copy" data-kind="notes">Notes table</button></div></div>`:"";
+
+  let historyHtml="";
+  if(S.history.length){
+    const reminder = days>3?`<div class="strip caution"><span>🗂</span><span>${days} days of observations retained — export the spreadsheet, then clear the days you don't need.</span></div>`:"";
+    const rows=S.history.map((sh,i)=>`<div class="logrow"><span class="lt" style="font-size:13px">${dayShort(sh.dateMs)}</span>
+      <div><div class="lp">${sh.obs.length} obs</div><div class="lw">${esc(sh.division||sh.locationName||"")}</div></div>
+      <button class="del" data-action="deleteDay" data-i="${i}">🗑</button></div>`).join("");
+    historyHtml=`<div class="group"><div class="sect"><span class="st">History · ${S.history.length} day${S.history.length===1?"":"s"}</span></div>
+      ${reminder}${rows}
+      <button class="btn ghost" data-action="clearHistory">Clear all history</button></div>`;
+  }
+  const newShiftHtml = obs.length?`<div class="group"><button class="btn ghost" data-action="newShift">Start new shift</button></div>`:"";
 
   const body=`<div class="pad">
     <div class="titlerow"><span class="title">Obs</span><span class="lbl">${obs.length?obs.length+" obs this shift":"IRPG PMS 461"}</span></div>
     ${obsDueHtml()}
-    ${heroHtml}${broadcastHtml}${trendHtml}${logHtml}${siteHtml}${captureHtml}${exportHtml}
+    ${heroHtml}${broadcastHtml}${trendSectionHtml()}${logHtml}${siteHtml}${captureHtml}${exportHtml}${historyHtml}${newShiftHtml}
     <div class="disc">PIG is app-computed — not observed, not a forecast.</div>
   </div>`;
   const logbar=`<div class="logbar"><button class="btn primary" data-action="logObs" ${gated?"disabled":""}>${gated?"Confirm site to log":"Log Observation · "+clockLabel(S.pendingMin)}</button></div>`;
@@ -717,36 +764,64 @@ function buildXlsx(){
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
   const headers=["Time","Dry Bulb","Wet Bulb","RH (%)","Wind (MPH)","Probability of Ignition (Unshaded) (%)","Probability of Ignition (Shaded) (%)","Elevation","Aspect","Location","Notes"];
   const disclaimer="Probability of Ignition = IRPG value, app-computed (not observed, not a forecast). Logged with Badwater Ignition - decision-support only, not affiliated with NWS/NWCG.";
-  const rows=S.obs.slice().sort((a,b)=>a.min-b.min);
   const col=i=>String.fromCharCode(65+i);
   const numC=(r,v)=>`<c r="${r}"><v>${v}</v></c>`;
   const strC=(r,v)=>`<c r="${r}" t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
-  const d=new Date(); const dateStr=`${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()%100}`;
-  const tail=[S.division,S.locationName].filter(Boolean).join(", ");
-  const title=`${dateStr} Weather Observations`+(tail?` - ${tail}`:"");
-  let sd=`<row r="1">${strC("A1",title)}</row><row r="2">`;
-  headers.forEach((h,i)=>sd+=strC(col(i)+"2",h)); sd+="</row>";
-  rows.forEach((o,ri)=>{ const R=ri+3;
-    let c=`<c r="A${R}" s="1"><v>${o.min/1440}</v></c>`+numC("B"+R,o.temp)+numC("D"+R,o.rh);
-    if(o.wind.high>0||o.wind.gust>0) c+=strC("E"+R,windImet(o.wind));
-    c+=numC("F"+R,o.pigU)+numC("G"+R,o.pigS);
-    if(o.elevationFeet!=null) c+=numC("H"+R,o.elevationFeet);
-    c+=strC("I"+R,DIRNAME[o.aspect]||o.aspect);
-    if(S.coordLat&&S.coordLon) c+=strC("J"+R,`${S.coordLat}, ${S.coordLon}`);
-    if(o.note) c+=strC("K"+R,o.note);
-    sd+=`<row r="${R}">${c}</row>`;
+  const ns="http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+  const rel="http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+  const pkg="http://schemas.openxmlformats.org/package/2006/relationships";
+
+  // One sheet per retained day (shift) that has obs — oldest first; empty shifts
+  // skipped; an all-empty book still yields one header-only sheet. Mirrors the
+  // Swift IMETExport.sheets(from: [Shift]).
+  let shifts=allShifts().filter(sh=>sh.obs.length).sort((a,b)=>a.dateMs-b.dateMs);
+  if(!shifts.length) shifts=[{obs:[],division:S.division,locationName:S.locationName,dateMs:S.shiftDateMs}];
+  const used={};
+  const sheets=shifts.map(sh=>{
+    const dateStr=dateSlash(sh.dateMs);
+    const tail=[sh.division,sh.locationName].filter(Boolean).join(", ");
+    const title=`${dateStr} Weather Observations`+(tail?` - ${tail}`:"");
+    const div=(sh.division||"").trim();
+    const abbr=/^division /i.test(div)?"Div "+div.slice(9):div;
+    let base=(abbr||"Obs")+" - "+dateCode(sh.dateMs);
+    base=base.replace(/[:\\/?*\[\]]/g," "); if(base.length>31)base=base.slice(0,31); if(!base)base="Sheet";
+    const cnt=(used[base]||0)+1; used[base]=cnt;
+    let name=base;
+    if(cnt>1){ const suf=" ("+cnt+")"; const room=Math.max(0,31-suf.length); name=(base.length>room?base.slice(0,room):base)+suf; }
+    const rows=sh.obs.slice().sort((a,b)=>a.min-b.min);
+    let sd=`<row r="1">${strC("A1",title)}</row><row r="2">`;
+    headers.forEach((h,i)=>sd+=strC(col(i)+"2",h)); sd+="</row>";
+    rows.forEach((o,ri)=>{ const R=ri+3;
+      let c=`<c r="A${R}" s="1"><v>${o.min/1440}</v></c>`+numC("B"+R,o.temp)+numC("D"+R,o.rh);
+      if(o.wind.high>0||o.wind.gust>0) c+=strC("E"+R,windImet(o.wind));
+      c+=numC("F"+R,o.pigU)+numC("G"+R,o.pigS);
+      if(o.elevationFeet!=null) c+=numC("H"+R,o.elevationFeet);
+      c+=strC("I"+R,DIRNAME[o.aspect]||o.aspect);
+      if(S.coordLat&&S.coordLon) c+=strC("J"+R,`${S.coordLat}, ${S.coordLon}`);
+      if(o.note) c+=strC("K"+R,o.note);
+      sd+=`<row r="${R}">${c}</row>`;
+    });
+    const footRow=rows.length+4;
+    sd+=`<row r="${footRow}">${strC("A"+footRow,disclaimer)}</row>`;
+    return {name, xml:H+`<worksheet xmlns="${ns}"><dimension ref="A1:K${footRow}"/><sheetData>${sd}</sheetData></worksheet>`};
   });
-  const footRow=rows.length+4;
-  sd+=`<row r="${footRow}">${strC("A"+footRow,disclaimer)}</row>`;
-  const sheet=H+`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:K${footRow}"/><sheetData>${sd}</sheetData></worksheet>`;
+
+  const N=sheets.length;
+  let ctOv="",sheetsX="",wbRels="";
+  for(let i=1;i<=N;i++){
+    ctOv+=`<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+    sheetsX+=`<sheet name="${esc(sheets[i-1].name)}" sheetId="${i}" r:id="rId${i}"/>`;
+    wbRels+=`<Relationship Id="rId${i}" Type="${rel}/worksheet" Target="worksheets/sheet${i}.xml"/>`;
+  }
+  wbRels+=`<Relationship Id="rId${N+1}" Type="${rel}/styles" Target="styles.xml"/>`;
   const parts=[
-    {path:"[Content_Types].xml",bytes:enc.encode(H+`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`)},
-    {path:"_rels/.rels",bytes:enc.encode(H+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`)},
-    {path:"xl/workbook.xml",bytes:enc.encode(H+`<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Obs" sheetId="1" r:id="rId1"/></sheets></workbook>`)},
-    {path:"xl/_rels/workbook.xml.rels",bytes:enc.encode(H+`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`)},
-    {path:"xl/styles.xml",bytes:enc.encode(H+`<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="20" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`)},
-    {path:"xl/worksheets/sheet1.xml",bytes:enc.encode(sheet)},
+    {path:"[Content_Types].xml",bytes:enc.encode(H+`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${ctOv}</Types>`)},
+    {path:"_rels/.rels",bytes:enc.encode(H+`<Relationships xmlns="${pkg}"><Relationship Id="rId1" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`)},
+    {path:"xl/workbook.xml",bytes:enc.encode(H+`<workbook xmlns="${ns}" xmlns:r="${rel}"><sheets>${sheetsX}</sheets></workbook>`)},
+    {path:"xl/_rels/workbook.xml.rels",bytes:enc.encode(H+`<Relationships xmlns="${pkg}">${wbRels}</Relationships>`)},
+    {path:"xl/styles.xml",bytes:enc.encode(H+`<styleSheet xmlns="${ns}"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="20" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`)},
   ];
+  for(let i=0;i<N;i++) parts.push({path:`xl/worksheets/sheet${i+1}.xml`,bytes:enc.encode(sheets[i].xml)});
   return zipStore(parts);
 }
 function downloadXlsx(){
@@ -754,10 +829,10 @@ function downloadXlsx(){
     const bytes=buildXlsx();
     const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement("a"); a.href=url; a.download="BadwaterIgnition-shift.xlsx";
+    const a=document.createElement("a"); a.href=url; a.download="BadwaterIgnition-observations.xlsx";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1500);
-    toast("Downloaded BadwaterIgnition-shift.xlsx");
+    toast("Downloaded BadwaterIgnition-observations.xlsx");
   }catch(e){ toast("Download blocked in this frame — open the artifact full-page"); }
 }
 
@@ -845,7 +920,16 @@ document.addEventListener("click",ev=>{
   else if(a==="editNudge"){ if(S.edit){ S.edit.min=Math.min(1439,Math.max(0,S.edit.min+parseInt(b.dataset.d,10))); } render(); }
   else if(a==="editSave"){ editSave(); }
   else if(a==="undo"){ if(S.lastRemoved){ S.obs.push(S.lastRemoved); S.lastRemoved=null; S.undo=false; } render(); }
-  else if(a==="newShift"){ S.obs=[]; S.siteConfirmed=false; S.lastRemoved=null; S.undo=false; render(); }
+  else if(a==="newShift"){
+    if(!confirm("Start a new shift? This shift is saved to History; the new shift starts empty."))return;
+    if(S.obs.length)S.history.unshift({obs:S.obs,division:S.division,locationName:S.locationName,dateMs:S.shiftDateMs});
+    S.obs=[]; S.shiftDateMs=Date.now(); S.siteConfirmed=false; S.lastRemoved=null; S.undo=false; render();
+  }
+  else if(a==="clearHistory"){ if(!S.history.length)return;
+    if(!confirm(`Clear all ${S.history.length} retained day${S.history.length===1?"":"s"}? Export the spreadsheet first if you still need them.`))return;
+    S.history=[]; render(); }
+  else if(a==="deleteDay"){ const i=parseInt(b.dataset.i,10);
+    if(i>=0&&i<S.history.length){ if(!confirm("Delete this day's observations? Export the spreadsheet first if you still need them."))return; S.history.splice(i,1); } render(); }
   else if(a==="exportXlsx"){ downloadXlsx(); }
   else if(a==="copy"){ const k=b.dataset.kind; const latest=S.obs.slice().sort((x,y)=>y.min-x.min)[0];
     copyText(k==="broadcast"?(latest?latest.broadcast:""):k==="spot"?spotText():notesText()); }

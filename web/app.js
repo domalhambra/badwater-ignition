@@ -1,5 +1,5 @@
 "use strict";
-//====================== Badwater Obs — UI layer ======================
+//====================== Badwater Ignition — UI layer ======================
 // State, rendering, and event wiring. All calculation lives in engine.js (the
 // web twin of BadwaterCore, conformance-tested against the Swift core in CI);
 // classic scripts share the global lexical scope, so everything engine.js

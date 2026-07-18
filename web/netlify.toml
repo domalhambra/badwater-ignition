@@ -1,4 +1,4 @@
-# Netlify configuration for obs.badwater.guide.
+# Netlify configuration for ignition.badwater.guide.
 #
 # The site is fully static (a single self-contained page + PWA assets) — there is
 # no build step. When connecting this repo to Netlify, set the site's
@@ -7,6 +7,15 @@
 
 [build]
   publish = "."
+
+# The app was formerly branded/served as obs.badwater.guide. That host is kept
+# as a domain alias on the Netlify site so this 301 fires, sending any old
+# links/bookmarks to the canonical ignition.badwater.guide.
+[[redirects]]
+  from = "https://obs.badwater.guide/*"
+  to = "https://ignition.badwater.guide/:splat"
+  status = 301
+  force = true
 
 # Security + privacy headers. The app makes no third-party or outbound requests;
 # everything (IRPG tables, psychrometrics, .xlsx export) runs locally in-page.

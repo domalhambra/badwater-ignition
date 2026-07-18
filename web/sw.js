@@ -1,8 +1,8 @@
-// Service worker for Badwater Obs — makes the whole app available offline (a
+// Service worker for Badwater Ignition — makes the whole app available offline (a
 // fireline has no signal). The app is a single self-contained document, so
 // caching the shell + icons is the entire app; all compute (IRPG tables,
 // psychrometrics, .xlsx export) runs client-side with no network.
-const CACHE = "badwater-obs-v3";
+const CACHE = "badwater-ignition-v4";
 const ASSETS = [
   "/",
   "/index.html",

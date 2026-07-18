@@ -1,6 +1,6 @@
 {
-  "name": "Badwater Obs",
-  "short_name": "Obs",
+  "name": "Badwater Ignition",
+  "short_name": "Ignition",
   "description": "Field-fast Probability of Ignition and hourly weather observations from the NWCG IRPG (PMS 461) and belt-weather-kit tables. Works offline.",
   "id": "/",
   "start_url": "/",

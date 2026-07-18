@@ -1,4 +1,4 @@
-# Badwater Obs — web app (`obs.badwater.guide`)
+# Badwater Ignition — web app (`ignition.badwater.guide`)
 
 A standalone, offline-capable web build of the Badwater Ignition field tool
 (Humidity · Ignition · **Obs**). Everything runs in the browser — the IRPG
@@ -44,15 +44,15 @@ numbers against your own IRPG.
 Drag this **`web/` folder** onto the Netlify **Sites** page
 (Add new site → Deploy manually). Done.
 
-## Point `obs.badwater.guide` at it
+## Point `ignition.badwater.guide` at it
 
-You own `badwater.guide`, so add the **`obs`** subdomain:
+You own `badwater.guide`, so add the **`ignition`** subdomain:
 
 1. Netlify site → **Domain management → Add a domain** → enter
-   `obs.badwater.guide` → **Verify / Add**.
+   `ignition.badwater.guide` → **Verify / Add**.
 2. Create the DNS record at your `badwater.guide` DNS host:
    - **If your DNS is elsewhere (Cloudflare, Namecheap, etc.):** add a
-     **CNAME** record — Host/Name `obs`, Value **`<your-site>.netlify.app`**
+     **CNAME** record — Host/Name `ignition`, Value **`<your-site>.netlify.app`**
      (the exact target Netlify shows on the domain screen). On Cloudflare, set
      the record to **DNS only** (grey cloud) at least until HTTPS is issued.
    - **If you use Netlify DNS for `badwater.guide`:** Netlify adds the record
@@ -61,7 +61,7 @@ You own `badwater.guide`, so add the **`obs`** subdomain:
    **auto‑provisions a Let's Encrypt certificate** — no action needed. Enable
    **Force HTTPS** once the cert is issued.
 
-That's it — `https://obs.badwater.guide` will serve the app, installable to a
+That's it — `https://ignition.badwater.guide` will serve the app, installable to a
 phone home screen ("Add to Home Screen"), and usable offline after the first
 load.
 
@@ -71,7 +71,7 @@ load.
 - **Option B:** drag the folder again.
 
 When you change any cached asset, bump the cache name in `sw.js`
-(`badwater-obs-v1` → `-v2`) so returning devices fetch the new version.
+(`badwater-ignition-v4` → `-v5`) so returning devices fetch the new version.
 
 ## Notes / limitations
 

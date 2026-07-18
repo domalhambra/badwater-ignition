@@ -10,15 +10,21 @@ fireline and sends no data anywhere.
 
 | File | Purpose |
 |---|---|
-| `index.html` | The entire app — self‑contained (inline CSS + JS). |
+| `index.html` | App shell + styles (inline CSS); loads the two scripts below. |
+| `engine.js` | **Pure calculation engine** — the JS twin of `Sources/BadwaterCore` (IRPG tables, psychrometrics, radio script, IMET `.xlsx`). No DOM/storage/clock, so Node loads it for conformance testing. |
+| `app.js` | UI layer — state, rendering, event wiring (the twin of `App/`). |
 | `manifest.webmanifest` | PWA manifest (installable, standalone display). |
-| `sw.js` | Service worker — caches the app for **offline** use. |
+| `sw.js` | Service worker — caches the app for **offline** use. **Bump `CACHE` on every web change** or field devices keep the old app. |
 | `icon.svg`, `icon-512.png`, `apple-touch-icon.png` | App icons / favicon. |
 | `netlify.toml` | Publish dir + security headers + caching. |
 | `robots.txt` | Allow indexing. |
 
-This is a **static site — there is no build step.** It's a faithful port of the
-`BadwaterCore` engine to JavaScript; verify numbers against your own IRPG.
+This is a **static site — there is no build step** and no dependencies. The
+port's fidelity to `BadwaterCore` is not taken on trust: CI replays golden
+vectors generated from the Swift core against `engine.js` on every push
+(`node conformance/check-web.js` — see [`docs/PARITY.md`](../docs/PARITY.md)),
+down to byte-exact `.xlsx` output. Still: decision support only — verify
+numbers against your own IRPG.
 
 ## Deploy to Netlify
 

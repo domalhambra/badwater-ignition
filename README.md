@@ -51,6 +51,13 @@ App/BadwaterIgnition/             SwiftUI app (iOS + macOS)
 App/BadwaterIgnitionTests/        view-model unit tests (run in Xcode)
 App/BadwaterIgnitionUITests/      black-box UI smoke tests (run in Xcode)
 project.yml                       XcodeGen spec (app + test targets, test scheme)
+
+web/                              PWA port (obs.badwater.guide) — engine.js (logic twin
+                                  of BadwaterCore) + app.js (UI twin of App/); static, offline-first
+Sources/BadwaterVectors/          `swift run badwater-vectors` — emits the conformance vectors
+conformance/                      golden vectors + Node harness that hold web/ at parity in CI
+docs/PARITY.md                    how iOS ⇄ web parity is enforced & auto-ported
+
 DESIGN.md                         design system — finalize in Claude Design
 docs/DATA_PROVENANCE.md           how every table value was transcribed & verified
 docs/APP_STORE.md                 draft App Store listing copy
@@ -59,6 +66,18 @@ ATTRIBUTION.md                    NWCG public-domain sourcing + disclaimer
 
 All correctness-critical logic lives in **`BadwaterCore`**, which has no UI and no
 Apple-framework dependencies, so its full test suite runs on Linux CI.
+
+## Web app & parity
+
+The same tool ships as a static, offline-capable PWA at **obs.badwater.guide**
+(`web/`, deployed via Netlify). Its calculation engine (`web/engine.js`) is a
+JavaScript twin of `BadwaterCore`, and parity is **enforced, not promised**:
+golden vectors generated from the Swift core (`swift run badwater-vectors`) are
+replayed against the web engine in CI on every push — tables, ignition chains,
+psychrometrics, radio scripts, and byte-exact IMET `.xlsx` output. When an
+iOS-side change lands on `main` without its web counterpart, a GitHub Actions
+agent (Claude Code) ports it and opens a draft parity PR gated by the same
+checks. Design and contributor rules: [`docs/PARITY.md`](docs/PARITY.md).
 
 ## Build & test
 

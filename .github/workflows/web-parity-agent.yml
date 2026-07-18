@@ -6,9 +6,10 @@
 # (conformance/check-web.js): the agent iterates until it is green, and CI
 # re-verifies the same suite on the PR. See docs/PARITY.md for the full design.
 #
-# Requires the ANTHROPIC_API_KEY repository secret (Settings → Secrets →
-# Actions). An OAuth token (claude_code_oauth_token) works as an alternative —
-# see the claude-code-action docs.
+# Requires the CLAUDE_CODE_OAUTH_TOKEN repository secret (Settings → Secrets →
+# Actions), generated from a Claude Pro/Max subscription via `claude setup-token`
+# — no API billing required. See docs/PARITY.md for step-by-step setup, or the
+# claude-code-action docs to use API-key billing (ANTHROPIC_API_KEY) instead.
 
 name: Web parity agent
 
@@ -70,7 +71,12 @@ jobs:
         if: steps.gate.outputs.needed == 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Use a Claude subscription (Pro/Max) via OAuth token — no API
+          # billing required. Generate with `claude setup-token` and store the
+          # result as the CLAUDE_CODE_OAUTH_TOKEN repo secret (see docs/PARITY.md).
+          # To bill through the API instead, set the ANTHROPIC_API_KEY secret
+          # and swap this input for `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
           prompt: |
             You are the web-parity agent for this repository. The iOS app

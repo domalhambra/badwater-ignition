@@ -85,11 +85,28 @@ The division of labor is the point: the agent makes the port cheap; the
 vectors make it trustworthy. Neither alone is sufficient for a tool crews use
 on a fireline.
 
-**Setup (one-time):** add an `ANTHROPIC_API_KEY` repository secret
-(Settings → Secrets and variables → Actions). A Claude subscription OAuth
-token via the action's `claude_code_oauth_token` input works as an
-alternative. Without the secret the workflow fails visibly — parity then
-still *detected* by Layer 2, just not auto-ported.
+**Setup (one-time):** the workflow authenticates with a Claude Pro/Max
+subscription by default — no API billing required. On any machine with the
+Claude Code CLI installed and logged into your subscription, run:
+
+```sh
+claude setup-token
+```
+
+This prints a long-lived OAuth token. In the repo on GitHub, go to
+**Settings → Secrets and variables → Actions → New repository secret**, name
+it `CLAUDE_CODE_OAUTH_TOKEN`, and paste the token as the value. That's the
+whole setup — the workflow (`.github/workflows/web-parity-agent.yml`) already
+reads that secret.
+
+Prefer to bill through the API instead? Create a key at
+[console.anthropic.com](https://console.anthropic.com), add it as an
+`ANTHROPIC_API_KEY` repository secret the same way, then in the workflow swap
+the `claude_code_oauth_token: …` line for `anthropic_api_key: ${{
+secrets.ANTHROPIC_API_KEY }}`.
+
+Without either secret the workflow fails visibly — parity is then still
+*detected* by Layer 2 (CI stays red), just not auto-ported.
 
 **Loop safety:** parity PRs touch only `web/`, which the trigger ignores, so
 the agent never triggers itself. Concurrent pushes serialize via a concurrency

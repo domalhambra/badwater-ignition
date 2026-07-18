@@ -16,3 +16,20 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      # The committed conformance vectors must match the core they were
+      # generated from. If this fails, a core change landed without
+      # `swift run badwater-vectors --out conformance/vectors.json`.
+      - name: Conformance vectors are fresh
+        run: swift run badwater-vectors --check conformance/vectors.json
+
+  web-conformance:
+    name: Web parity (engine.js vs BadwaterCore vectors)
+    runs-on: ubuntu-latest
+    env:
+      TZ: UTC   # xlsx sheet names/titles are date-derived on both sides
+    steps:
+      - uses: actions/checkout@v4
+      - name: Web sources parse
+        run: node --check web/engine.js && node --check web/app.js
+      - name: Conformance harness
+        run: node conformance/check-web.js

@@ -1,0 +1,130 @@
+# Web parity agent — keeps obs.badwater.guide at feature parity with the iOS app.
+#
+# When a push to main touches the Swift side (Sources/ or App/) without touching
+# web/, this workflow runs Claude Code to port the change to the web app and
+# open a draft parity PR. The deterministic gate is the conformance suite
+# (conformance/check-web.js): the agent iterates until it is green, and CI
+# re-verifies the same suite on the PR. See docs/PARITY.md for the full design.
+#
+# Requires the CLAUDE_CODE_OAUTH_TOKEN repository secret (Settings → Secrets →
+# Actions), generated from a Claude Pro/Max subscription via `claude setup-token`
+# — no API billing required. See docs/PARITY.md for step-by-step setup, or the
+# claude-code-action docs to use API-key billing (ANTHROPIC_API_KEY) instead.
+
+name: Web parity agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Sources/**"
+      - "App/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: web-parity-agent
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  port:
+    if: github.repository == 'domalhambra/badwater-calculator'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PUSH_BEFORE: ${{ github.event.before }}
+      PUSH_AFTER: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # If the push already brought web/ along (or conformance is already
+      # green and nothing web-visible changed), there is nothing to port.
+      - name: Decide whether a port is needed
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "range=HEAD~1...HEAD" >> "$GITHUB_OUTPUT"
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RANGE="$PUSH_BEFORE...$PUSH_AFTER"
+          # A force-push or new branch can make `before` unresolvable.
+          git rev-parse -q --verify "$PUSH_BEFORE^{commit}" >/dev/null || RANGE="$PUSH_AFTER~1...$PUSH_AFTER"
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+          CHANGED=$(git diff --name-only $RANGE)
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -q '^web/'; then
+            echo "web/ was updated in the same push — assuming parity was handled."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Port the change with Claude Code
+        if: steps.gate.outputs.needed == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Use a Claude subscription (Pro/Max) via OAuth token — no API
+          # billing required. Generate with `claude setup-token` and store the
+          # result as the CLAUDE_CODE_OAUTH_TOKEN repo secret (see docs/PARITY.md).
+          # To bill through the API instead, set the ANTHROPIC_API_KEY secret
+          # and swap this input for `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+          prompt: |
+            You are the web-parity agent for this repository. The iOS app
+            (SwiftUI over Sources/BadwaterCore) is the source of truth; the
+            static PWA in web/ (deployed to obs.badwater.guide via Netlify)
+            must stay at feature parity. Read docs/PARITY.md first.
+
+            A push to main just changed the Swift side without touching web/.
+            The changed range is ${{ steps.gate.outputs.range }} — inspect it:
+
+                git log --stat ${{ steps.gate.outputs.range }}
+                git diff ${{ steps.gate.outputs.range }} -- Sources App
+
+            Your job:
+            1. Understand what changed (new feature, changed logic, changed
+               copy, pure refactor, iOS-only UI polish, tests-only, ...).
+            2. If NOTHING is web-visible (comments, iOS-only UI polish, test
+               changes, refactors with identical behavior), verify that
+               `node conformance/check-web.js` is green and stop — do not
+               open a PR. Print a one-paragraph justification instead.
+            3. Otherwise port the change to the web app:
+               - Calculation/logic/text-output changes -> web/engine.js
+                 (mirror BadwaterCore exactly; the conformance vectors in
+                 conformance/vectors.json pin the expected behavior).
+               - UI/feature changes -> web/app.js (and web/index.html if
+                 markup/styles are involved), following the app's existing
+                 vanilla-JS render style. Match the iOS feature's behavior,
+                 not necessarily its pixels.
+               - ALWAYS bump the CACHE version string in web/sw.js
+                 (badwater-obs-vN -> vN+1) — the PWA is offline-first and a
+                 stale cache means crews in the field run the old app.
+            4. Gate your work: `node conformance/check-web.js` must pass, and
+               `node --check web/engine.js web/app.js` must parse. Iterate
+               until green. Never edit conformance/vectors.json (it is
+               generated from Swift), never edit Sources/ or App/, and never
+               weaken the harness to get to green.
+            5. Commit to a new branch `claude/web-parity-<short-sha-of-HEAD>`,
+               push it, and open a DRAFT pull request titled
+               "web parity: <one-line summary of the ported change>" with a
+               body that lists: the upstream commits being ported, what was
+               changed in web/, the conformance result, and anything you
+               could NOT port faithfully (call these out loudly rather than
+               approximating silently). Use `gh pr create --draft`.
+
+            Constraints: web/ has no build step and no dependencies — keep it
+            that way. Do not add npm packages, bundlers, or frameworks. Keep
+            the engine free of DOM/storage/clock access so Node can load it.
+
+      - name: Note skipped run
+        if: steps.gate.outputs.needed != 'true'
+        run: echo "No port needed for this push."

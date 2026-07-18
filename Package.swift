@@ -16,12 +16,20 @@ let package = Package(
         .watchOS(.v10)
     ],
     products: [
-        .library(name: "BadwaterCore", targets: ["BadwaterCore"])
+        .library(name: "BadwaterCore", targets: ["BadwaterCore"]),
+        .executable(name: "badwater-vectors", targets: ["BadwaterVectors"])
     ],
     targets: [
         .target(
             name: "BadwaterCore",
             path: "Sources/BadwaterCore"
+        ),
+        // Emits conformance/vectors.json — golden vectors the web port
+        // (web/engine.js) is checked against in CI. See docs/PARITY.md.
+        .executableTarget(
+            name: "BadwaterVectors",
+            dependencies: ["BadwaterCore"],
+            path: "Sources/BadwaterVectors"
         ),
         .testTarget(
             name: "BadwaterCoreTests",

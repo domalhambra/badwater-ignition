@@ -1,4 +1,4 @@
-# Web parity agent — keeps obs.badwater.guide at feature parity with the iOS app.
+# Web parity agent — keeps ignition.badwater.guide at feature parity with the iOS app.
 #
 # When a push to main touches the Swift side (Sources/ or App/) without touching
 # web/, this workflow runs Claude Code to port the change to the web app and
@@ -86,7 +86,7 @@ jobs:
           prompt: |
             You are the web-parity agent for this repository. The iOS app
             (SwiftUI over Sources/BadwaterCore) is the source of truth; the
-            static PWA in web/ (deployed to obs.badwater.guide via Netlify)
+            static PWA in web/ (deployed to ignition.badwater.guide via Netlify)
             must stay at feature parity. Read docs/PARITY.md first.
 
             A push to main just changed the Swift side without touching web/.

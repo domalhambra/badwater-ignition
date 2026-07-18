@@ -52,7 +52,7 @@ App/BadwaterIgnitionTests/        view-model unit tests (run in Xcode)
 App/BadwaterIgnitionUITests/      black-box UI smoke tests (run in Xcode)
 project.yml                       XcodeGen spec (app + test targets, test scheme)
 
-web/                              PWA port (obs.badwater.guide) — engine.js (logic twin
+web/                              PWA port (ignition.badwater.guide) — engine.js (logic twin
                                   of BadwaterCore) + app.js (UI twin of App/); static, offline-first
 Sources/BadwaterVectors/          `swift run badwater-vectors` — emits the conformance vectors
 conformance/                      golden vectors + Node harness that hold web/ at parity in CI
@@ -69,7 +69,7 @@ Apple-framework dependencies, so its full test suite runs on Linux CI.
 
 ## Web app & parity
 
-The same tool ships as a static, offline-capable PWA at **obs.badwater.guide**
+The same tool ships as a static, offline-capable PWA at **ignition.badwater.guide**
 (`web/`, deployed via Netlify). Its calculation engine (`web/engine.js`) is a
 JavaScript twin of `BadwaterCore`, and parity is **enforced, not promised**:
 golden vectors generated from the Swift core (`swift run badwater-vectors`) are

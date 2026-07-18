@@ -2,7 +2,7 @@
 
 Badwater Ignition ships twice: the SwiftUI app (iOS/macOS, built on
 `Sources/BadwaterCore`) and the hand-written vanilla-JS PWA in `web/`
-(obs.badwater.guide). Two implementations of one safety-relevant spec is a
+(ignition.badwater.guide). Two implementations of one safety-relevant spec is a
 standing invitation to drift — a wrong PIG on one platform is exactly the bug
 this repo exists to prevent. This document describes the machinery that makes
 parity **enforced by the build and automated by an agent**, not maintained by

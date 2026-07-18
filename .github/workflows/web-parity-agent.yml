@@ -28,6 +28,11 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  # claude-code-action exchanges a short-lived OIDC token as part of its auth
+  # flow (both the subscription-OAuth and API-key paths); without this the
+  # step fails immediately with "Could not fetch an OIDC token" before ever
+  # reaching the CLAUDE_CODE_OAUTH_TOKEN / ANTHROPIC_API_KEY secret.
+  id-token: write
 
 jobs:
   port:

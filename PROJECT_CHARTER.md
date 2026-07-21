@@ -21,7 +21,7 @@ Decision-support only. Not affiliated with or endorsed by the NWCG.
 ## Location & filing
 
 - **Repo folder:** `Projects/Badwater OS/Badwater Ignitions/`
-- **GitHub:** `domalhambra/badwater-calculator`
+- **GitHub:** `domalhambra/badwater-ignition`
 - **Netlify site:** `badwater-ignition` → `badwater-ignition.netlify.app`
 - **DNS:** Cloudflare, `badwater.guide` zone — proxied CNAME `ignition` (+ `obs` alias for the 301)
 - **Workspace filing:** listed in `Badwater OS/CLAUDE.md` Projects table + Fallback route (fire-tool / IRPG questions).

@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   port:
-    if: github.repository == 'domalhambra/badwater-calculator'
+    if: github.repository == 'domalhambra/badwater-ignition'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:

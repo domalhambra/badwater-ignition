@@ -31,7 +31,7 @@ numbers against your own IRPG.
 ### Option A — from this Git repo (recommended; auto‑deploys on push)
 
 1. In Netlify: **Add new site → Import an existing project → GitHub →
-   `domalhambra/badwater-calculator`**.
+   `domalhambra/badwater-ignition`**.
 2. Build settings:
    - **Base directory:** `web`
    - **Build command:** *(leave empty)*

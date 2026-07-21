@@ -55,7 +55,7 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 - **Continuous deploy:** the web app is a **git-connected Netlify site** (`badwater-ignition`). Pushing to `main` auto-deploys `web/` (base directory `web/`, no build command). There is no manual deploy step.
 - **When you change any cached web asset, bump `CACHE` in `web/sw.js`** (currently `badwater-ignition-v4` → `-v5`, …) or field devices keep serving the old app offline.
 - **Domain:** `ignition.badwater.guide` (canonical). The former host `obs.badwater.guide` is kept as a Netlify domain alias and **301-redirects** (rule in `web/netlify.toml`); its Cloudflare CNAME stays for the redirect to fire. Both are proxied CNAMEs → `badwater-ignition.netlify.app` in the `badwater.guide` Cloudflare zone.
-- GitHub: `domalhambra/badwater-calculator`.
+- GitHub: `domalhambra/badwater-ignition`.
 
 ## Guardrails
 

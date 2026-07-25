@@ -243,6 +243,10 @@ struct SiteEditor: View {
             TextField(placeholder, text: text)
                 .font(BadwaterFont.body)
                 .fieldKeyboard(keyboard)
+                // The visible label doubles as the identifier so the field is
+                // addressable from UI tests and VoiceOver alike.
+                .accessibilityIdentifier(label)
+                .accessibilityLabel(label)
                 .padding(11)
                 .frame(minHeight: Metric.tapTarget, alignment: .leading)
                 .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: 10))

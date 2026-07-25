@@ -703,8 +703,6 @@ struct WatchView: View {
     }
 }
 
-}
-
 /// The observation-time control: tap the value to **type** a time directly
 /// ("1435" or "14:35"), or nudge it ±5 minutes. Two-way bound to the pending-obs
 /// timestamp, so typing, nudging, and the reset-to-now after a log all agree.

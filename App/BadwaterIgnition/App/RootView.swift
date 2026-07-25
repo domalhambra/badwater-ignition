@@ -16,11 +16,16 @@ struct RootView: View {
 
     enum Tab: Hashable { case ignition, humidity, watch }
 
-    init() {
-        let ignition = IgnitionModel()
+    /// - Parameter store: where the models persist. Defaults to
+    ///   ``AppEnvironment/defaultsStore``, which is `.standard` in normal use and
+    ///   a throwaway suite when the UI tests pass their reset flag, so each test
+    ///   starts from first-launch defaults instead of inheriting the previous
+    ///   test's shift log.
+    init(store: UserDefaults = AppEnvironment.defaultsStore) {
+        let ignition = IgnitionModel(store: store)
         _ignition = State(initialValue: ignition)
-        _humidity = State(initialValue: HumidityModel())
-        _watch = State(initialValue: WeatherWatchModel(ignition: ignition))
+        _humidity = State(initialValue: HumidityModel(store: store))
+        _watch = State(initialValue: WeatherWatchModel(ignition: ignition, store: store))
     }
 
     var body: some View {

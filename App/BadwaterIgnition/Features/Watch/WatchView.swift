@@ -15,6 +15,7 @@ import AppKit
 /// so it mirrors the Ignition tab), and the shift exports (IMET `.xlsx`, NWS
 /// spot, Notes). The first log of a shift is gated on an explicit site review, so
 /// a persisted default can never silently feed a broadcast.
+@MainActor
 struct WatchView: View {
     @Bindable var model: WeatherWatchModel
     @Bindable var ignition: IgnitionModel
@@ -706,6 +707,7 @@ struct WatchView: View {
 /// The observation-time control: tap the value to **type** a time directly
 /// ("1435" or "14:35"), or nudge it ±5 minutes. Two-way bound to the pending-obs
 /// timestamp, so typing, nudging, and the reset-to-now after a log all agree.
+@MainActor
 private struct ObsTimeField: View {
     @Binding var time: Date
     @State private var text = ""
@@ -799,6 +801,7 @@ private func shiftingMinutes(_ base: Date, _ minutes: Int) -> Date {
 /// never touches the live Ignition tab or the pending obs. `rhSource` is fixed to
 /// how the reading was taken: a slung obs edits its wet bulb (RH / dew point
 /// re-derive against the obs's own band); a direct obs edits RH.
+@MainActor
 private struct ObsEditSheet: View {
     let original: WeatherObs
     /// Commits the corrected fields; the parent calls `model.updateObs`, which
@@ -916,6 +919,7 @@ private struct ObsEditSheet: View {
 
 /// Copy text to the system pasteboard — the inset "Copy" pill on the broadcast
 /// panel. Platform-guarded so the view compiles for iOS and macOS.
+@MainActor
 private func copyToPasteboard(_ text: String) {
     #if canImport(UIKit)
     UIPasteboard.general.string = text

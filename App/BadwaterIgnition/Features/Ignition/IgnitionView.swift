@@ -6,6 +6,7 @@ import BadwaterCore
 /// — Weather (Table A), Calendar · Time (Tables B/C/D), and Site (corrections) —
 /// followed by the calculation chain and both shaded/unshaded results with a
 /// plain-language interpretation. Everything updates live.
+@MainActor
 struct IgnitionView: View {
     @Bindable var model: IgnitionModel
     @Environment(\.scenePhase) private var scenePhase

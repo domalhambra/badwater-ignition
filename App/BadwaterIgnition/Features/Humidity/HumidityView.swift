@@ -4,6 +4,7 @@ import BadwaterCore
 /// The Humidity screen: dry/wet-bulb inputs, elevation band, and the resulting
 /// relative humidity and dew point — with a one-tap hand-off into the Ignition
 /// calculator.
+@MainActor
 struct HumidityView: View {
     @Bindable var model: HumidityModel
     /// Called when the user taps "Use in ignition calc" with the computed RH.

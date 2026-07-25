@@ -17,6 +17,7 @@ import BadwaterCore
 /// ``effectiveRelativeHumidity``). Every property change recomputes ``estimate``
 /// synchronously — the screen has no "Calculate" button. All computation is
 /// local and offline.
+@MainActor
 @Observable
 final class IgnitionModel {
     var dryBulbF: Int { didSet { clampWet(); touchWeather(); persist() } }

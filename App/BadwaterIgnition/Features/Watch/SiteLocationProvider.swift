@@ -23,12 +23,12 @@ import CoreLocation
 /// Nothing here is persisted or transmitted; the fix exists only long enough for
 /// the operator to accept it into the site fields, which they can then edit.
 ///
-/// Deliberately **not** `@MainActor`, matching `IgnitionModel` and
-/// `WeatherWatchModel`. Delegate callbacks hop to the main queue explicitly
-/// instead, so every mutation of the observable `status` happens on main without
-/// this one type having isolation the other models don't. Annotating all three
-/// together — and moving the core to the Swift 6 language mode — is tracked as a
-/// single piece of work in `docs/RED_TEAM.md` (R4).
+/// `@MainActor` like the other view models. CoreLocation delivers its callbacks
+/// on the queue the manager was created on — main, since `init` is main-actor —
+/// so the delegate shim below hops back with `MainActor.assumeIsolated` rather
+/// than an async dispatch, keeping a fix's arrival synchronous with the UI that
+/// renders it.
+@MainActor
 @Observable
 final class SiteLocationProvider {
 
@@ -81,9 +81,7 @@ final class SiteLocationProvider {
         // five decimal places (~1 m) and the elevation feeds a band decision.
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.delegate = delegate
-        delegate.onLocation = { [weak self] location in self?.accept(location) }
-        delegate.onFailure = { [weak self] error in self?.fail(error) }
-        delegate.onAuthorizationChange = { [weak self] in self?.authorizationSettled() }
+        delegate.owner = self
         #endif
     }
 
@@ -176,25 +174,28 @@ final class SiteLocationProvider {
 
     /// CoreLocation's delegate has to be an `NSObject`, which doesn't mix with
     /// the `@Observable` macro, so it lives here as a thin forwarding shim.
+    ///
+    /// It holds a weak `owner` rather than callback closures: under the Swift 6
+    /// language mode a closure property would have to be typed
+    /// `(@MainActor (CLLocation) -> Void)?` and then couldn't be captured into a
+    /// `@Sendable` dispatch block. A weak reference sidesteps that entirely.
+    ///
+    /// `assumeIsolated` is sound here because the manager is created in a
+    /// main-actor `init`, so CoreLocation delivers on the main queue.
     private final class Delegate: NSObject, CLLocationManagerDelegate {
-        var onLocation: ((CLLocation) -> Void)?
-        var onFailure: ((Error) -> Void)?
-        var onAuthorizationChange: (() -> Void)?
+        weak var owner: SiteLocationProvider?
 
-        // CoreLocation delivers on the queue the manager was created on, which is
-        // main here — but these hop explicitly rather than rely on that, since
-        // every one of them mutates observable state SwiftUI reads.
         func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
             guard let location = locations.last else { return }
-            DispatchQueue.main.async { [onLocation] in onLocation?(location) }
+            MainActor.assumeIsolated { owner?.accept(location) }
         }
 
         func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-            DispatchQueue.main.async { [onFailure] in onFailure?(error) }
+            MainActor.assumeIsolated { owner?.fail(error) }
         }
 
         func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-            DispatchQueue.main.async { [onAuthorizationChange] in onAuthorizationChange?() }
+            MainActor.assumeIsolated { owner?.authorizationSettled() }
         }
     }
     #endif

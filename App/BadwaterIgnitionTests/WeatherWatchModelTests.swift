@@ -5,6 +5,7 @@ import BadwaterCore
 /// View-model tests for Weather Watch. These run in the simulator (Observation +
 /// UserDefaults); the pure observation logic is covered by WeatherWatchTests in
 /// BadwaterCore on Linux CI.
+@MainActor
 final class WeatherWatchModelTests: XCTestCase {
 
     private func fresh(_ name: String) -> UserDefaults {

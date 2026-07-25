@@ -5,6 +5,7 @@ import BadwaterCore
 /// Unit tests for the view-model layer. These run in the simulator (the models
 /// use the Observation framework), and exercise the real persistence, wet-bulb
 /// RH derivation, and hand-off logic rather than the UI.
+@MainActor
 final class IgnitionModelTests: XCTestCase {
 
     private func freshStore(_ name: String = #function) -> UserDefaults {
@@ -247,6 +248,7 @@ final class IgnitionModelTests: XCTestCase {
     }
 }
 
+@MainActor
 final class HumidityModelTests: XCTestCase {
 
     func testResultUpdatesAndClampsWetBulb() {

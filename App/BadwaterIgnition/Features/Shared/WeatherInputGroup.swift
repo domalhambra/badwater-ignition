@@ -10,6 +10,7 @@ import BadwaterCore
 /// The wet-bulb-only extras (elevation band + derived RH) sit at the end of the
 /// group and animate in place, so switching humidity source resizes this one
 /// bounded block instead of inserting rows that shove the rest of the screen.
+@MainActor
 struct WeatherInputGroup: View {
     @Bindable var model: IgnitionModel
     /// The other tab these inputs are shared with, shown as a passive cue in the

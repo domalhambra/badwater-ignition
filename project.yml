@@ -54,7 +54,10 @@ targets:
           spreadsheets you export.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: PoolTeal
-        SWIFT_VERSION: "5.9"
+        # Swift 6 language mode: full data-race checking, matching
+        # Package.swift's swiftLanguageMode(.v6) for BadwaterCore. The view
+        # models and the SwiftUI views are @MainActor-isolated accordingly.
+        SWIFT_VERSION: "6.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         # Developer supplies their own signing team.
         DEVELOPMENT_TEAM: ""

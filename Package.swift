@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 // BadwaterCore is a pure-Swift, dependency-free library that encodes the NWCG
@@ -20,21 +20,29 @@ let package = Package(
         .executable(name: "badwater-vectors", targets: ["BadwaterVectors"])
     ],
     targets: [
+        // Swift 6 language mode: full data-race checking. The core is pure value
+        // types that were already `Sendable`, so this is enforcement of a
+        // property it already had rather than a migration — and it means the app
+        // targets, the widget, and the watch app all link a core that is provably
+        // safe to touch from any isolation.
         .target(
             name: "BadwaterCore",
-            path: "Sources/BadwaterCore"
+            path: "Sources/BadwaterCore",
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         // Emits conformance/vectors.json — golden vectors the web port
         // (web/engine.js) is checked against in CI. See docs/PARITY.md.
         .executableTarget(
             name: "BadwaterVectors",
             dependencies: ["BadwaterCore"],
-            path: "Sources/BadwaterVectors"
+            path: "Sources/BadwaterVectors",
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "BadwaterCoreTests",
             dependencies: ["BadwaterCore"],
-            path: "Tests/BadwaterCoreTests"
+            path: "Tests/BadwaterCoreTests",
+            swiftSettings: [.swiftLanguageMode(.v6)]
         )
     ]
 )

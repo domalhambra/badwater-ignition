@@ -10,6 +10,7 @@ import BadwaterCore
 /// timestamp, deriving month + time-of-day from the wall clock so the record and
 /// the trend can't be biased by a stale band left on the Ignition tab. The current
 /// shift persists across launches; all compute is local & offline.
+@MainActor
 @Observable
 final class WeatherWatchModel {
     /// The current shift's logged observations.

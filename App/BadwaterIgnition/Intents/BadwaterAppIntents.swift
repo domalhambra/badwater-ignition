@@ -21,12 +21,12 @@ import BadwaterCore
 /// Reading the current estimate has no such hazard and answers in place.
 @available(iOS 17.0, macOS 14.0, *)
 struct CurrentIgnitionIntent: AppIntent {
-    static var title: LocalizedStringResource = "Current probability of ignition"
-    static var description = IntentDescription(
+    static let title: LocalizedStringResource = "Current probability of ignition"
+    static let description = IntentDescription(
         "Reads the Probability of Ignition for the weather currently entered in Badwater Ignition.")
 
     /// Answers in place — nothing here mutates the record.
-    static var openAppWhenRun = false
+    static let openAppWhenRun = false
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -53,15 +53,15 @@ struct CurrentIgnitionIntent: AppIntent {
 /// Take a weather observation — opens the app at the capture card.
 @available(iOS 17.0, macOS 14.0, *)
 struct LogObservationIntent: AppIntent {
-    static var title: LocalizedStringResource = "Log a weather observation"
-    static var description = IntentDescription(
+    static let title: LocalizedStringResource = "Log a weather observation"
+    static let description = IntentDescription(
         "Opens Badwater Ignition ready to log a weather observation.")
 
     /// Deliberately `true` — see the type note on ``CurrentIgnitionIntent``. The
     /// shift's site-review gate and the weather-freshness strip are both on the
     /// screen this opens, and neither can do its job if the log happens in the
     /// background.
-    static var openAppWhenRun = true
+    static let openAppWhenRun = true
 
     @MainActor
     func perform() async throws -> some IntentResult {
@@ -73,6 +73,9 @@ struct LogObservationIntent: AppIntent {
 /// Phrases Siri accepts without the user configuring anything.
 @available(iOS 17.0, macOS 14.0, *)
 struct BadwaterShortcuts: AppShortcutsProvider {
+    // `static let`/computed rather than `static var`: under the Swift 6 language
+    // mode a mutable static is global shared mutable state and is rejected. The
+    // AppIntents requirements are all `{ get }`, so this satisfies them.
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: CurrentIgnitionIntent(),

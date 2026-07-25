@@ -41,6 +41,12 @@ swift test                    # BadwaterCore suite — runs on any Swift toolcha
 node conformance/check-web.js # web ⇄ core parity gate
 ```
 
+The SwiftUI app is gated too, by the `app-build` CI job (macOS runner): XcodeGen
+generate → build for iOS Simulator **and** macOS → `BadwaterIgnitionTests` →
+`BadwaterIgnitionUITests`. Both app test bundles are real gates now; if you touch
+`App/`, expect them to run. UI tests launch with `-uiTestingResetState` so each
+starts from first-launch defaults — see `AppEnvironment`.
+
 Native app (macOS + Xcode):
 ```sh
 brew install xcodegen         # once
@@ -76,6 +82,7 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 | `PROJECT_CHARTER.md` | vision, status, milestones |
 | `DESIGN.md` | design system |
 | `docs/PARITY.md`, `docs/DATA_PROVENANCE.md`, `docs/APP_STORE.md` | parity machinery, table provenance, store listing draft |
+| `docs/RED_TEAM.md` | red-team findings, what's fixed vs. recommended, iOS capability roadmap |
 | `ATTRIBUTION.md` | NWCG public-domain sourcing + disclaimer |
 
 ## Session logging

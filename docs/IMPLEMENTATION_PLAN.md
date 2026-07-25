@@ -139,29 +139,22 @@ migration that silently drops a shift log is worse than the problem it fixes.
 
 Independent of each other and of Phase 1. Can be done in any order, or batched.
 
-### 2.1 Dew point clamp (R6) — the only parity-touching item
+### 2.1 Dew point clamp (R6) — **done: the finding was withdrawn**
 
-**Change.** `Psychrometrics.compute` clamps RH to 100% but derives `dewPointF`
-from the unclamped vapor pressure, so a saturated reading can report a dew point
-a degree above the dry bulb.
+The premise was wrong. The dew point provably cannot exceed the dry bulb (the
+wet bulb is already clamped, saturation vapor pressure is monotonic, and the
+subtracted psychrometer term is non-negative), verified by sweeping the whole
+10–130 °F input space across all six bands: maximum excess is exactly zero.
 
-**Precise blast radius** (checked, not estimated):
-- `Sources/BadwaterCore/Psychrometrics/RelativeHumidity.swift` — the clamp.
-- `conformance/vectors.json` — `psychroCases()` emits `dewPointF`, and the
-  generator includes `(70, 75, 3)` explicitly labelled *"wet > dry clamps to
-  saturation"*. Vectors **will** move. Regenerate with
-  `swift run badwater-vectors --out conformance/vectors.json`; never hand-edit.
-- `web/engine.js` — `psychro()`, the `dewC` line. One line.
-- `web/sw.js` — bump `CACHE`, because a cached web asset changed.
+What was actually wrong was the test's `dry + 1` tolerance, which made the
+invariant look uncertain. Tightened to assert exactly, over the full range and
+every band. No clamp added — an unreachable one would mask a future break in the
+wet-bulb clamp rather than let the test catch it.
 
-**Why it's called out separately.** It is the only item here that crosses the
-parity boundary, so it wants to be **one small deliberate PR**, not a drive-by
-inside a larger change. `docs/PARITY.md` already spells out the discipline.
-
-**Verification.** `swift test`, vectors freshness check, `node conformance/check-web.js`.
-**Size.** An hour, most of it care. **Risk.** Low, contained.
-**Environment.** **Needs a Swift toolchain** — vectors cannot be regenerated
-without one, and CI will (correctly) reject a stale `vectors.json`.
+Consequences for this plan: **vectors did not move**, `web/engine.js` needed no
+port, and no service-worker cache bump was required. The item that was sized at
+"an hour, needs a Mac" cost a test edit and no parity work at all. See
+`RED_TEAM.md` R6 for the full argument.
 
 ### 2.2 Undo stack for deleted observations (R3)
 

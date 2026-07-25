@@ -233,17 +233,39 @@ sizing (`Font.system(.largeTitle, design: .rounded)`) or `@ScaledMetric` on the
 readout sizes, verified at the larger accessibility sizes so the result cards
 don't clip.
 
-### R6. Dew point is not clamped to the dry bulb — Low
+### R6. Dew point is not clamped to the dry bulb — **WITHDRAWN, this finding was wrong**
 
-`Psychrometrics.compute` clamps RH to 100% but derives `dewPointF` from the
-unclamped vapor pressure, so a saturated reading can report a dew point a degree
-above the dry bulb. Physically impossible and cosmetic in practice.
+**Original claim:** `Psychrometrics.compute` clamps RH to 100% but derives
+`dewPointF` from the unclamped vapor pressure, so a saturated reading can report
+a dew point a degree above the dry bulb.
 
-**Why not now:** this is a core calculation change. It would move
-`conformance/vectors.json`, which must be regenerated with
-`swift run badwater-vectors` and ported to `web/engine.js` in the same change —
-none of which is possible without a Swift toolchain. It should be one small,
-deliberate PR, not a drive-by.
+**That cannot happen.** The dew point provably never exceeds the dry bulb:
+
+- `wet` is already clamped to `≤ dryBulbF` at the top of `compute`;
+- saturation vapor pressure is monotonic in temperature, so `esWet ≤ esDry`;
+- the psychrometer term subtracted from it is non-negative, since `tDryC ≥ tWetC`.
+
+Therefore `vaporPressure ≤ esWet ≤ esDry`, hence `dewPointC ≤ tDryC`. At
+saturation the Bolton inversion returns the dry bulb *exactly* — algebraically,
+the substitution cancels to `t`.
+
+Confirmed empirically as well as algebraically: swept the entire 10–130 °F
+dry-bulb × wet-bulb space across all six pressure bands, and the maximum value of
+`dewPointF − dryBulbF` is exactly `0.000000000000`.
+
+**What was actually wrong** was the test, not the code.
+`testDewPointNeverExceedsDryBulb` asserted `dewPointF ≤ dry + 1`, and that
+one-degree tolerance is what made the invariant look uncertain. It has been
+tightened to assert equality-or-less **exactly**, across the full input range and
+every band, including wet bulbs above the dry bulb so the saturation edge is
+covered.
+
+No clamp was added, deliberately. An unreachable `min(dewPoint, dryBulb)` would
+be untested code in a safety-relevant path, and worse, it would *mask* a future
+break in the wet-bulb clamp instead of letting the test fail loudly.
+
+Cost of the original error: it was sized at "an hour, needs a Mac for vector
+regeneration". The real fix was a test tightening with no vector movement at all.
 
 ### R7. `ObsEditSheet` can still set a logged obs into the future — Low
 

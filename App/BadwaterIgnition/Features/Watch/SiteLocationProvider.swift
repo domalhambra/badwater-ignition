@@ -51,6 +51,25 @@ final class SiteLocationProvider {
         let takenAt: Date
     }
 
+    /// A raw device location reading, reduced to Sendable primitives.
+    ///
+    /// The CoreLocation delegate arrives on a nonisolated context and has to hand
+    /// its reading to this main-actor type. Crossing that boundary with a
+    /// `CLLocation` would mean sending a class reference the compiler can't prove
+    /// safe; reducing it to plain values first makes the hop trivially sound.
+    ///
+    /// It also decouples the fix-handling rules from CoreLocation entirely, so
+    /// ``normalize(_:)`` is unit-testable without a device or a real `CLLocation`.
+    struct LocationSample: Sendable, Equatable {
+        var latitude: Double
+        var longitude: Double
+        var altitudeMeters: Double
+        /// Non-positive means CoreLocation has no altitude for this fix.
+        var verticalAccuracyMeters: Double
+        var horizontalAccuracyMeters: Double
+        var timestamp: Date
+    }
+
     /// What the fix button should be showing.
     enum Status: Equatable {
         case idle
@@ -111,8 +130,47 @@ final class SiteLocationProvider {
         #endif
     }
 
+    /// Turn a raw reading into a normalized ``Fix``, or `nil` if the coordinate
+    /// isn't real.
+    ///
+    /// Pure, `static`, and free of CoreLocation types — so the rules that decide
+    /// a fix's elevation and whether it straddles an elevation band are unit
+    /// tested directly, without a device, a simulator, or a real `CLLocation`.
+    static func normalize(_ sample: LocationSample) -> Fix? {
+        guard let coordinate = GeoPoint(validating: sample.latitude,
+                                        longitude: sample.longitude) else { return nil }
+
+        // A non-positive verticalAccuracy means CoreLocation has no altitude for
+        // this fix — take the coordinate and leave the elevation to be typed.
+        let elevationFeet = sample.verticalAccuracyMeters > 0
+            ? SiteElevation.roundedFeet(fromMeters: sample.altitudeMeters)
+            : nil
+
+        let uncertainty: Int?
+        let straddles: Bool
+        if let elevationFeet {
+            let accuracyFeet = SiteElevation.feet(fromMeters: sample.verticalAccuracyMeters)
+            let u = SiteElevation.effectiveUncertaintyFeet(sensorAccuracyFeet: accuracyFeet)
+            uncertainty = u
+            straddles = SiteElevation.straddlesBandBoundary(feetMSL: elevationFeet, uncertaintyFeet: u)
+        } else {
+            uncertainty = nil
+            straddles = false
+        }
+
+        return Fix(
+            coordinate: coordinate,
+            elevationFeet: elevationFeet,
+            elevationUncertaintyFeet: uncertainty,
+            horizontalAccuracyFeet: sample.horizontalAccuracyMeters > 0
+                ? SiteElevation.feet(fromMeters: sample.horizontalAccuracyMeters).map { Int($0.rounded()) }
+                : nil,
+            straddlesBandBoundary: straddles,
+            takenAt: sample.timestamp)
+    }
+
     #if canImport(CoreLocation)
-    private func authorizationSettled() {
+    fileprivate func authorizationSettled() {
         switch manager.authorizationStatus {
         case .notDetermined:
             break   // still waiting on the operator
@@ -124,48 +182,19 @@ final class SiteLocationProvider {
         }
     }
 
-    private func accept(_ location: CLLocation) {
-        guard let coordinate = GeoPoint(validating: location.coordinate.latitude,
-                                        longitude: location.coordinate.longitude) else {
+    fileprivate func accept(_ sample: LocationSample) {
+        guard let fix = Self.normalize(sample) else {
             status = .failed("The fix returned an invalid coordinate.")
             return
         }
-
-        // A non-positive verticalAccuracy means CoreLocation has no altitude for
-        // this fix — take the coordinate and leave the elevation to be typed.
-        let hasVertical = location.verticalAccuracy > 0
-        let elevationFeet = hasVertical
-            ? SiteElevation.roundedFeet(fromMeters: location.altitude)
-            : nil
-
-        let uncertainty: Int?
-        let straddles: Bool
-        if let elevationFeet {
-            let accuracyFeet = SiteElevation.feet(fromMeters: location.verticalAccuracy)
-            let u = SiteElevation.effectiveUncertaintyFeet(sensorAccuracyFeet: accuracyFeet)
-            uncertainty = u
-            straddles = SiteElevation.straddlesBandBoundary(feetMSL: elevationFeet, uncertaintyFeet: u)
-        } else {
-            uncertainty = nil
-            straddles = false
-        }
-
-        let fix = Fix(
-            coordinate: coordinate,
-            elevationFeet: elevationFeet,
-            elevationUncertaintyFeet: uncertainty,
-            horizontalAccuracyFeet: location.horizontalAccuracy > 0
-                ? SiteElevation.feet(fromMeters: location.horizontalAccuracy).map { Int($0.rounded()) }
-                : nil,
-            straddlesBandBoundary: straddles,
-            takenAt: location.timestamp)
         lastFix = fix
         status = .fixed(fix)
     }
 
-    private func fail(_ error: Error) {
-        // A denial can also surface as an error rather than an authorization change.
-        if let clError = error as? CLError, clError.code == .denied {
+    /// `denied` is resolved in the delegate so no `Error` (not Sendable) has to
+    /// cross the isolation boundary.
+    fileprivate func fail(denied: Bool) {
+        if denied {
             status = .denied
             return
         }
@@ -175,27 +204,40 @@ final class SiteLocationProvider {
     /// CoreLocation's delegate has to be an `NSObject`, which doesn't mix with
     /// the `@Observable` macro, so it lives here as a thin forwarding shim.
     ///
-    /// It holds a weak `owner` rather than callback closures: under the Swift 6
-    /// language mode a closure property would have to be typed
-    /// `(@MainActor (CLLocation) -> Void)?` and then couldn't be captured into a
-    /// `@Sendable` dispatch block. A weak reference sidesteps that entirely.
+    /// Every hop captures **only Sendable values** — never `self`. Reading
+    /// `self.owner` inside the closure captured the (non-Sendable) delegate and
+    /// the Swift 6 mode rejected it with "sending 'self' risks causing data
+    /// races"; binding `owner` to a local first captures just that reference,
+    /// which is Sendable because a `@MainActor`-isolated class is implicitly so.
+    /// The reading itself is reduced to a ``LocationSample`` of plain values.
     ///
-    /// `assumeIsolated` is sound here because the manager is created in a
-    /// main-actor `init`, so CoreLocation delivers on the main queue.
+    /// `assumeIsolated` is sound because the manager is created in a main-actor
+    /// `init`, so CoreLocation delivers on the main queue.
     private final class Delegate: NSObject, CLLocationManagerDelegate {
         weak var owner: SiteLocationProvider?
 
         func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-            guard let location = locations.last else { return }
-            MainActor.assumeIsolated { owner?.accept(location) }
+            guard let location = locations.last, let owner else { return }
+            let sample = LocationSample(
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude,
+                altitudeMeters: location.altitude,
+                verticalAccuracyMeters: location.verticalAccuracy,
+                horizontalAccuracyMeters: location.horizontalAccuracy,
+                timestamp: location.timestamp)
+            MainActor.assumeIsolated { owner.accept(sample) }
         }
 
         func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-            MainActor.assumeIsolated { owner?.fail(error) }
+            guard let owner else { return }
+            // Resolve the denial here so no Error crosses the boundary.
+            let denied = (error as? CLError)?.code == .denied
+            MainActor.assumeIsolated { owner.fail(denied: denied) }
         }
 
         func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-            MainActor.assumeIsolated { owner?.authorizationSettled() }
+            guard let owner else { return }
+            MainActor.assumeIsolated { owner.authorizationSettled() }
         }
     }
     #endif

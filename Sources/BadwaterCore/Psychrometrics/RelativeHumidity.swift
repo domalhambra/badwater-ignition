@@ -63,6 +63,19 @@ public enum Psychrometrics {
         let rh = max(0.0, min(100.0, 100.0 * vaporPressure / esDry))
 
         // Invert Bolton to recover dew point from the vapor pressure.
+        //
+        // No clamp to the dry bulb is needed here, and deliberately none is
+        // applied. The dew point provably cannot exceed the dry bulb: `wet` is
+        // clamped to <= dryBulbF above, saturation vapor pressure is monotonic in
+        // temperature (so esWet <= esDry), and the psychrometer term subtracted
+        // from it is non-negative (tDryC >= tWetC) — therefore
+        // vaporPressure <= esWet <= esDry, and dewPointC <= tDryC. At saturation
+        // the Bolton inversion returns the dry bulb exactly, algebraically.
+        //
+        // `PsychrometricsTests.testDewPointNeverExceedsDryBulb` pins this across
+        // the full 10-130 F input range and every band. A defensive `min(...)`
+        // here would be unreachable code that *masked* a future break in the
+        // wet-bulb clamp instead of letting that test fail loudly.
         let ratio = log(vaporPressure / 6.112)
         let dewPointC = (243.5 * ratio) / (17.67 - ratio)
         let dewPointF = celsiusToFahrenheit(dewPointC)

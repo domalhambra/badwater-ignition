@@ -237,6 +237,56 @@ final class WeatherWatchModelTests: XCTestCase {
         XCTAssertNil(w.undoRemoveObs())
     }
 
+    /// Two deletes used to leave the first unrecoverable while the undo strip
+    /// still read "Observation removed". The stack keeps both, newest first.
+    func testUndoWalksBackThroughMultipleDeletions() {
+        let store = fresh("undostack")
+        let ign = IgnitionModel(store: store)
+        let w = WeatherWatchModel(ignition: ign, store: store)
+        let a = w.logObs(at: Date(timeIntervalSince1970: 1_000))
+        let b = w.logObs(at: Date(timeIntervalSince1970: 2_000))
+        XCTAssertEqual(w.shift.obs.count, 2)
+
+        w.removeObs(id: a.id)
+        w.removeObs(id: b.id)
+        XCTAssertEqual(w.undoableRemovalCount, 2)
+        XCTAssertTrue(w.shift.obs.isEmpty)
+
+        // Newest deletion comes back first, then the older one.
+        XCTAssertEqual(w.undoRemoveObs()?.id, b.id)
+        XCTAssertEqual(w.undoableRemovalCount, 1)
+        XCTAssertEqual(w.undoRemoveObs()?.id, a.id)
+        XCTAssertEqual(w.undoableRemovalCount, 0)
+        XCTAssertNil(w.undoRemoveObs())
+        XCTAssertEqual(Set(w.shift.obs.map(\.id)), Set([a.id, b.id]))
+    }
+
+    func testUndoStackIsBounded() {
+        let store = fresh("undobound")
+        let ign = IgnitionModel(store: store)
+        let w = WeatherWatchModel(ignition: ign, store: store)
+        let logged = (0..<(WeatherWatchModel.undoDepth + 3)).map {
+            w.logObs(at: Date(timeIntervalSince1970: Double(1_000 + $0)))
+        }
+        for obs in logged { w.removeObs(id: obs.id) }
+        XCTAssertEqual(w.undoableRemovalCount, WeatherWatchModel.undoDepth)
+    }
+
+    /// Undo must not reach across a shift boundary — restoring there would append
+    /// a previous shift's observation into the new one.
+    func testStartingANewShiftClearsTheUndoStack() {
+        let store = fresh("undoshift")
+        let ign = IgnitionModel(store: store)
+        let w = WeatherWatchModel(ignition: ign, store: store)
+        let a = w.logObs(at: Date(timeIntervalSince1970: 1_000))
+        w.removeObs(id: a.id)
+        XCTAssertEqual(w.undoableRemovalCount, 1)
+        w.startNewShift()
+        XCTAssertEqual(w.undoableRemovalCount, 0)
+        XCTAssertNil(w.undoRemoveObs())
+        XCTAssertTrue(w.shift.obs.isEmpty)
+    }
+
     func testWeatherStalenessWarning() {
         let ign = ignition(dry: 80, rh: 15)   // helper edits inputs -> stamps weatherEditedAt
         let w = WeatherWatchModel(ignition: ign, store: fresh("watch.stale"))
@@ -295,5 +345,75 @@ final class WeatherWatchModelTests: XCTestCase {
         let script = w.broadcastScript(for: second)
         XCTAssertTrue(script.contains("Dry Bulb 85 degrees, up 5"))
         XCTAssertTrue(script.contains("RH 12%, down 3"))
+    }
+}
+
+/// The GPS fix-normalization rules, tested without a device, a simulator, or a
+/// real `CLLocation` — `SiteLocationProvider.normalize` is pure and takes a
+/// Sendable value sample, which is what makes this possible.
+@MainActor
+final class SiteLocationProviderTests: XCTestCase {
+
+    private func sample(lat: Double = 38.21437, lon: Double = -112.3978,
+                        altitudeMeters: Double = 1724,
+                        verticalAccuracyMeters: Double = 10,
+                        horizontalAccuracyMeters: Double = 5)
+        -> SiteLocationProvider.LocationSample {
+        SiteLocationProvider.LocationSample(
+            latitude: lat, longitude: lon,
+            altitudeMeters: altitudeMeters,
+            verticalAccuracyMeters: verticalAccuracyMeters,
+            horizontalAccuracyMeters: horizontalAccuracyMeters,
+            timestamp: Date(timeIntervalSince1970: 1_780_000_000))
+    }
+
+    func testElevationRoundsToNearestHundredFeet() {
+        // 1724 m ≈ 5656.2 ft → 5700.
+        let fix = SiteLocationProvider.normalize(sample())
+        XCTAssertEqual(fix?.elevationFeet, 5700)
+    }
+
+    func testNoVerticalFixLeavesElevationNil() {
+        // A non-positive verticalAccuracy means no altitude — the coordinate is
+        // still usable, and the elevation stays for the operator to type.
+        let fix = SiteLocationProvider.normalize(sample(verticalAccuracyMeters: -1))
+        XCTAssertNotNil(fix)
+        XCTAssertNil(fix?.elevationFeet)
+        XCTAssertNil(fix?.elevationUncertaintyFeet)
+        XCTAssertFalse(fix?.straddlesBandBoundary ?? true)
+    }
+
+    func testInvalidCoordinateIsRejected() {
+        XCTAssertNil(SiteLocationProvider.normalize(sample(lat: 500)))
+        XCTAssertNil(SiteLocationProvider.normalize(sample(lon: .nan)))
+    }
+
+    /// A fix landing on an elevation-band top must be flagged: the band picks the
+    /// station pressure that derives wet-bulb RH, so the crew is told to confirm
+    /// it against a map rather than trust the sensor.
+    func testFixOnABandTopIsFlaggedAsStraddling() {
+        // 579.12 m = 1900 ft exactly — the band2/band3 top.
+        let fix = SiteLocationProvider.normalize(sample(altitudeMeters: 579.12))
+        XCTAssertEqual(fix?.elevationFeet, 1900)
+        XCTAssertTrue(fix?.straddlesBandBoundary ?? false)
+    }
+
+    func testMidBandFixIsNotFlagged() {
+        // 914.4 m = 3000 ft, mid band3 (1,901–3,900).
+        let fix = SiteLocationProvider.normalize(sample(altitudeMeters: 914.4))
+        XCTAssertEqual(fix?.elevationFeet, 3000)
+        XCTAssertFalse(fix?.straddlesBandBoundary ?? true)
+    }
+
+    /// The uncertainty a rounded elevation is judged by never drops below the
+    /// ±50 ft the rounding itself introduces, however good the sensor claims to be.
+    func testUncertaintyFloorsAtTheRoundingSlop() {
+        let fix = SiteLocationProvider.normalize(sample(verticalAccuracyMeters: 1))
+        XCTAssertEqual(fix?.elevationUncertaintyFeet, SiteElevation.roundingUncertaintyFeet)
+    }
+
+    func testCoordinateIsPreservedExactly() {
+        let fix = SiteLocationProvider.normalize(sample())
+        XCTAssertEqual(fix?.coordinate.rendered, "38.21437, -112.3978")
     }
 }

@@ -336,11 +336,21 @@ struct WatchView: View {
         let ordered = model.shift.obs.sorted { $0.timestamp > $1.timestamp }
         return VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Shift log", annotation: "\(model.shift.obs.count) obs")
-            if showUndo, model.lastRemovedObs != nil {
-                StatusStrip(icon: "arrow.uturn.backward", message: "Observation removed",
-                            caution: true, actionTitle: "Undo",
-                            action: { model.undoRemoveObs(); showUndo = false },
-                            identifier: "undo-strip", actionIdentifier: "undo-remove")
+            if showUndo, model.undoableRemovalCount > 0 {
+                // The count is shown so a second delete can't hide the first: the
+                // strip used to read "Observation removed" while silently holding
+                // only the most recent one.
+                StatusStrip(
+                    icon: "arrow.uturn.backward",
+                    message: model.undoableRemovalCount == 1
+                        ? "Observation removed"
+                        : "\(model.undoableRemovalCount) observations removed",
+                    caution: true, actionTitle: "Undo",
+                    action: {
+                        model.undoRemoveObs()
+                        if model.undoableRemovalCount == 0 { showUndo = false }
+                    },
+                    identifier: "undo-strip", actionIdentifier: "undo-remove")
             }
             ForEach(ordered) { obs in logRow(obs) }
         }
@@ -841,6 +851,22 @@ private struct ObsEditSheet: View {
 
     private var isSlung: Bool { original.rhSource == .wetBulb }
 
+    /// A corrected timestamp in the future would re-file the reading under an
+    /// IRPG time-of-day band that hasn't happened, and make it the "latest" obs
+    /// the hero and the due countdown read from — the same hazard the capture
+    /// card guards, which this sheet previously did not. Correcting a reading
+    /// *backwards* is the normal case and stays silent.
+    @ViewBuilder private var editFutureTimeStrip: some View {
+        if time.timeIntervalSinceNow > 60 {
+            StatusStrip(
+                icon: "clock.badge.exclamationmark",
+                message: "That time is ahead of the clock — this reading would be filed in the future.",
+                caution: true, actionTitle: "Use now",
+                action: { time = Date() },
+                identifier: "edit-time-future", actionIdentifier: "edit-time-use-now")
+        }
+    }
+
     /// Rebuild the edited wind, mirroring `IgnitionModel.wind` (no high speed ⇒
     /// light/variable, still carrying any gust) — but preserve "not recorded"
     /// (`nil`) for an obs that never had wind and still has none entered, so a
@@ -863,6 +889,7 @@ private struct ObsEditSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     ObsTimeField(time: $time)
+                    editFutureTimeStrip
 
                     HStack(spacing: 10) {
                         StepperCard(label: "Dry bulb", unit: "°F", value: $dryBulb, range: 10...130)

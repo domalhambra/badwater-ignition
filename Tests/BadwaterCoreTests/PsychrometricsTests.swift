@@ -20,11 +20,29 @@ final class PsychrometricsTests: XCTestCase {
         }
     }
 
+    /// The dew point can never exceed the dry bulb — asserted **exactly**, with
+    /// no tolerance, across the app's whole input range and every band.
+    ///
+    /// This used to allow `dry + 1`, which quietly masked whether the invariant
+    /// actually held. It does hold, and provably: `wetBulbF` is clamped to
+    /// ≤ `dryBulbF`, saturation vapor pressure is monotonic in temperature (so
+    /// `esWet ≤ esDry`), and the psychrometer term subtracted from it is
+    /// non-negative — therefore `vaporPressure ≤ esDry` and `dewPointC ≤ tDryC`.
+    ///
+    /// Tightening this is what lets `Psychrometrics` carry *no* defensive
+    /// `min(dewPoint, dryBulb)` clamp: an unreachable clamp would mask a future
+    /// break in the wet-bulb clamp, whereas this test fails loudly on one.
+    /// Wet bulbs above the dry bulb are included so the saturation edge — where
+    /// the Bolton inversion returns the dry bulb exactly — is covered too.
     func testDewPointNeverExceedsDryBulb() {
-        for dry in stride(from: 40, through: 110, by: 10) {
-            for depression in 0...30 {
-                let r = Psychrometrics.compute(dryBulbF: dry, wetBulbF: dry - depression, band: .band3)
-                XCTAssertLessThanOrEqual(r.dewPointF, dry + 1)
+        for band in ElevationBand.allCases {
+            for dry in stride(from: 10, through: 130, by: 5) {
+                for wet in stride(from: 10, through: 135, by: 5) {
+                    let r = Psychrometrics.compute(dryBulbF: dry, wetBulbF: wet, band: band)
+                    XCTAssertLessThanOrEqual(
+                        r.dewPointF, dry,
+                        "dew point \(r.dewPointF) exceeded dry bulb \(dry) (wet \(wet), \(band))")
+                }
             }
         }
     }

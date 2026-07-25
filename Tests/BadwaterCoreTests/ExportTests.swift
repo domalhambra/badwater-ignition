@@ -262,3 +262,49 @@ final class ExportTests: XCTestCase {
             wind: wind, elevationFeet: elev, location: loc)
     }
 }
+
+/// Bounds the classic ZIP format imposes. These are unreachable with the app's
+/// own inputs (a few kilobytes of sheet XML, short fixed paths) — the point is
+/// that a future caller who exceeds them gets a diagnosable error instead of a
+/// trap from the `UInt16`/`UInt32` header conversions.
+final class ZipArchiveLimitsTests: XCTestCase {
+
+    func testNormalArchiveStillRoundTripsThroughTheCheckedPath() throws {
+        let entries = [(path: "a.txt", data: Data("hello".utf8)),
+                       (path: "dir/b.xml", data: Data("<x/>".utf8))]
+        let checked = try ZipArchive.zipChecked(entries)
+        // The trapping convenience and the throwing form must agree byte for byte.
+        XCTAssertEqual(checked, ZipArchive.zip(entries))
+        XCTAssertEqual([UInt8](checked.prefix(4)), [0x50, 0x4B, 0x03, 0x04])
+    }
+
+    func testOverlongEntryNameThrowsRatherThanTraps() {
+        let name = String(repeating: "a", count: ZipArchive.Limit.maxEntryNameBytes + 1)
+        XCTAssertThrowsError(try ZipArchive.zipChecked([(path: name, data: Data())])) { error in
+            guard case ZipArchive.Failure.entryNameTooLong(_, let bytes) = error else {
+                return XCTFail("expected entryNameTooLong, got \(error)")
+            }
+            XCTAssertEqual(bytes, ZipArchive.Limit.maxEntryNameBytes + 1)
+        }
+    }
+
+    func testTooManyEntriesThrows() {
+        let entries = (0...ZipArchive.Limit.maxEntryCount).map {
+            (path: "f\($0)", data: Data())
+        }
+        XCTAssertThrowsError(try ZipArchive.zipChecked(entries)) { error in
+            guard case ZipArchive.Failure.tooManyEntries = error else {
+                return XCTFail("expected tooManyEntries, got \(error)")
+            }
+        }
+    }
+
+    /// Multi-byte paths are measured in UTF-8 bytes, not characters — the ZIP
+    /// header length field counts bytes.
+    func testNameLengthIsMeasuredInUTF8Bytes() throws {
+        // "é" is two UTF-8 bytes; well under the limit, but the check must not
+        // reject it by miscounting, and the archive must still build.
+        let entries = [(path: "café/naïve.xml", data: Data("<x/>".utf8))]
+        XCTAssertNoThrow(try ZipArchive.zipChecked(entries))
+    }
+}

@@ -51,9 +51,27 @@ final class WeatherWatchModel {
     /// screen gates the first log of a shift on this, so the persisted aspect
     /// default can never silently feed a broadcast (red-team #9).
     private(set) var siteConfirmedAt: Date? { didSet { persistSiteConfirmed() } }
-    /// The most recently deleted obs, held (in memory only) for an undo toast —
-    /// a glove mis-tap must not silently erase part of the record (red-team #7).
-    private(set) var lastRemovedObs: WeatherObs?
+    /// Recently deleted observations, newest last, held in memory only for the
+    /// undo affordance — a glove mis-tap must not silently erase part of the
+    /// record (red-team #7).
+    ///
+    /// A **stack**, not a single slot. It used to be one `lastRemovedObs`, which
+    /// a second delete overwrote while the undo strip still read "Observation
+    /// removed" — so the first deletion became unrecoverable with nothing on
+    /// screen saying so. Bounded, because this is a safety net for mis-taps, not
+    /// a history feature.
+    private(set) var removedObsStack: [WeatherObs] = []
+
+    /// How many deletions can be undone.
+    static let undoDepth = 10
+
+    /// The deletion a single undo would restore, or `nil` when there's nothing
+    /// to undo.
+    var lastRemovedObs: WeatherObs? { removedObsStack.last }
+
+    /// How many deletions are still recoverable — shown on the undo affordance
+    /// so a second delete doesn't hide the first.
+    var undoableRemovalCount: Int { removedObsStack.count }
     /// True once any attempt to write the observation record to disk has failed.
     /// The in-memory log is still intact and still exportable — this exists so
     /// the screen can say "export before you relaunch" instead of the record
@@ -289,6 +307,9 @@ final class WeatherWatchModel {
         shift = Shift(started: now)
         // A new shift means a fresh site review before the first broadcast.
         siteConfirmedAt = nil
+        // Undo can't reach across a shift boundary: restoring here would append a
+        // previous shift's observation into the new one.
+        removedObsStack.removeAll()
     }
 
     /// Every retained shift plus the current one — the source for the multi-day
@@ -315,19 +336,22 @@ final class WeatherWatchModel {
     }
 
     /// Delete a mis-entered observation. The shift re-persists via `didSet`, and
-    /// the removed obs is retained for ``undoRemoveObs()`` so the view can offer
-    /// an undo toast.
+    /// the removed obs is pushed onto the undo stack so the view can offer to
+    /// restore it — including after a second delete.
     func removeObs(id: UUID) {
-        if let removed = shift.obs.first(where: { $0.id == id }) { lastRemovedObs = removed }
+        if let removed = shift.obs.first(where: { $0.id == id }) {
+            removedObsStack.append(removed)
+            if removedObsStack.count > Self.undoDepth { removedObsStack.removeFirst() }
+        }
         shift.obs.removeAll { $0.id == id }
     }
 
     /// Restore the most recently deleted obs. Position doesn't matter — every
     /// live read is timestamp-ordered, so a plain append lands it correctly.
+    /// Repeated calls walk back through the stack.
     @discardableResult
     func undoRemoveObs() -> WeatherObs? {
-        guard let removed = lastRemovedObs else { return nil }
-        lastRemovedObs = nil
+        guard let removed = removedObsStack.popLast() else { return nil }
         shift.obs.append(removed)
         return removed
     }

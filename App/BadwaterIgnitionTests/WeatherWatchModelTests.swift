@@ -417,3 +417,171 @@ final class SiteLocationProviderTests: XCTestCase {
         XCTAssertEqual(fix?.coordinate.rendered, "38.21437, -112.3978")
     }
 }
+
+/// Migration of the observation record out of `UserDefaults` and into files.
+///
+/// This is the highest-risk change in the storage work, so it is tested against
+/// the thing that actually matters: **does every observation survive, byte for
+/// byte, including the frozen broadcast text?** A migration that re-renders a
+/// broadcast would rewrite the record of what was spoken on the net.
+@MainActor
+final class ObservationRecordStoreTests: XCTestCase {
+
+    private var tempDir: URL!
+
+    override func setUpWithError() throws {
+        tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("badwater-record-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        if let tempDir { try? FileManager.default.removeItem(at: tempDir) }
+    }
+
+    private func fresh(_ name: String) -> UserDefaults {
+        let d = UserDefaults(suiteName: "test.record.\(name)")!
+        d.removePersistentDomain(forName: "test.record.\(name)")
+        return d
+    }
+
+    /// Build a shift whose observations exercise the fields a careless migration
+    /// would drop: a frozen broadcast, a note, wind, elevation, coordinate, and a
+    /// "pre-feature" obs with those optionals nil.
+    private func sampleShift(started: Date, obsCount: Int, broadcast: String?) -> Shift {
+        let input = IgnitionInput(dryBulbF: 90, relativeHumidity: 8, month: 7,
+                                  timeOfDay: .band1400_1559, aspect: .south,
+                                  slope: .gentle, elevationDelta: .level)
+        var obs: [WeatherObs] = []
+        for i in 0..<obsCount {
+            var o = WeatherObs(timestamp: started.addingTimeInterval(Double(i) * 3600),
+                               estimate: IgnitionCalculator.estimate(input),
+                               rhSource: .direct)
+            if i == 0 {
+                o.note = "sun on thermometer"
+                o.wind = .measured(Wind.SpeedRange(low: 3, high: 6), .southwest, gust: 12)
+                o.elevationFeet = 5700
+                o.location = GeoPoint(latitude: 38.21437, longitude: -112.3978)
+                o.spokenLocation = "near the 659 road"
+                o.broadcastText = broadcast
+            }
+            obs.append(o)
+        }
+        return Shift(started: started, obs: obs, division: "Division W", locationName: "659 Road")
+    }
+
+    func testMigratesShiftAndHistoryFromUserDefaultsIntact() throws {
+        let defaults = fresh("intact")
+        let current = sampleShift(started: Date(timeIntervalSince1970: 1_780_000_000),
+                                  obsCount: 3, broadcast: "Wx obs 1400, temp 90, RH 8")
+        let history = [sampleShift(started: Date(timeIntervalSince1970: 1_779_900_000),
+                                   obsCount: 2, broadcast: "Wx obs 0900, temp 70, RH 20"),
+                       sampleShift(started: Date(timeIntervalSince1970: 1_779_800_000),
+                                   obsCount: 1, broadcast: nil)]
+        defaults.set(try JSONEncoder().encode(current),
+                     forKey: ObservationRecordStore.LegacyKeys.shift)
+        defaults.set(try JSONEncoder().encode(history),
+                     forKey: ObservationRecordStore.LegacyKeys.history)
+
+        let store = ObservationRecordStore(defaults: defaults, directory: tempDir)
+        XCTAssertEqual(store.loadShift(), current, "current shift did not survive migration")
+        XCTAssertEqual(store.loadHistory(), history, "history did not survive migration")
+
+        // The evidentiary field specifically.
+        XCTAssertEqual(store.loadShift()?.obs.first?.broadcastText,
+                       "Wx obs 1400, temp 90, RH 8",
+                       "migration altered the frozen broadcast text")
+    }
+
+    func testMigrationIsIdempotentAndDoesNotDuplicate() throws {
+        let defaults = fresh("idempotent")
+        let history = [sampleShift(started: Date(timeIntervalSince1970: 1_779_900_000),
+                                   obsCount: 2, broadcast: "spoken")]
+        defaults.set(try JSONEncoder().encode(history),
+                     forKey: ObservationRecordStore.LegacyKeys.history)
+
+        _ = ObservationRecordStore(defaults: defaults, directory: tempDir)
+        let second = ObservationRecordStore(defaults: defaults, directory: tempDir)
+        XCTAssertEqual(second.loadHistory(), history)
+        XCTAssertEqual(second.loadHistory().count, 1, "migration duplicated the record")
+    }
+
+    /// A migration must never clobber a newer file with the stale legacy blob.
+    func testMigrationDoesNotOverwriteAnExistingFile() throws {
+        let defaults = fresh("nooverwrite")
+        let legacy = [sampleShift(started: Date(timeIntervalSince1970: 1), obsCount: 1, broadcast: "old")]
+        defaults.set(try JSONEncoder().encode(legacy),
+                     forKey: ObservationRecordStore.LegacyKeys.history)
+
+        let store = ObservationRecordStore(defaults: defaults, directory: tempDir)
+        let newer = [sampleShift(started: Date(timeIntervalSince1970: 2), obsCount: 4, broadcast: "new")]
+        XCTAssertTrue(store.saveHistory(newer))
+
+        // A fresh store over the same directory must read the file, not re-migrate.
+        let reopened = ObservationRecordStore(defaults: defaults, directory: tempDir)
+        XCTAssertEqual(reopened.loadHistory(), newer)
+    }
+
+    /// The legacy keys stay put, so a rolled-back build still finds the record.
+    func testLegacyKeysAreLeftInPlace() throws {
+        let defaults = fresh("legacy")
+        let current = sampleShift(started: Date(timeIntervalSince1970: 1_780_000_000),
+                                  obsCount: 1, broadcast: "spoken")
+        defaults.set(try JSONEncoder().encode(current),
+                     forKey: ObservationRecordStore.LegacyKeys.shift)
+        _ = ObservationRecordStore(defaults: defaults, directory: tempDir)
+        XCTAssertNotNil(defaults.data(forKey: ObservationRecordStore.LegacyKeys.shift),
+                        "legacy key was deleted; a rollback would lose the record")
+    }
+
+    func testSaveAndLoadRoundTrips() {
+        let store = ObservationRecordStore(defaults: fresh("roundtrip"), directory: tempDir)
+        let shift = sampleShift(started: Date(timeIntervalSince1970: 1_780_000_000),
+                                obsCount: 5, broadcast: "spoken")
+        XCTAssertTrue(store.saveShift(shift))
+        XCTAssertEqual(store.loadShift(), shift)
+    }
+
+    /// A corrupt file must not take the app down or silently look like an empty
+    /// shift on a fresh launch — it reads as "no record", and the legacy blob is
+    /// still there to fall back on.
+    func testCorruptFileReadsAsNoRecordRatherThanCrashing() throws {
+        let defaults = fresh("corrupt")
+        let store = ObservationRecordStore(defaults: defaults, directory: tempDir)
+        try Data("not json".utf8).write(to: tempDir.appendingPathComponent("shift.json"))
+        XCTAssertNil(store.loadShift())
+    }
+
+    /// The model reads through the store, so a migrated record shows up as the
+    /// live shift on construction.
+    func testModelPicksUpAMigratedRecord() throws {
+        let defaults = fresh("model")
+        let current = sampleShift(started: Date(timeIntervalSince1970: 1_780_000_000),
+                                  obsCount: 2, broadcast: "spoken")
+        defaults.set(try JSONEncoder().encode(current),
+                     forKey: ObservationRecordStore.LegacyKeys.shift)
+
+        let record = ObservationRecordStore(defaults: defaults, directory: tempDir)
+        let ign = IgnitionModel(store: defaults)
+        let model = WeatherWatchModel(ignition: ign, store: defaults, record: record)
+        XCTAssertEqual(model.shift.obs.count, 2)
+        XCTAssertEqual(model.shift.obs.first?.broadcastText, "spoken")
+    }
+
+    /// Logging writes through to the file, and a new model over the same
+    /// directory sees it — the persistence path end to end.
+    func testLoggedObsSurvivesANewModelInstance() {
+        let defaults = fresh("persist")
+        let ign = IgnitionModel(store: defaults)
+        let first = WeatherWatchModel(
+            ignition: ign, store: defaults,
+            record: ObservationRecordStore(defaults: defaults, directory: tempDir))
+        first.confirmSite()
+        let logged = first.logObs(at: Date(timeIntervalSince1970: 1_780_000_000))
+
+        let second = WeatherWatchModel(
+            ignition: ign, store: defaults,
+            record: ObservationRecordStore(defaults: defaults, directory: tempDir))
+        XCTAssertEqual(second.shift.obs.map(\.id), [logged.id])
+    }
+}

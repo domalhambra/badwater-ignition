@@ -81,12 +81,18 @@ final class WeatherWatchModel {
 
     private let ignition: IgnitionModel
     private let store: UserDefaults
+    /// File-backed storage for the observation record. The small scalar
+    /// preferences below stay in `UserDefaults`, which is what it's for.
+    private let record: ObservationRecordStore
 
-    init(ignition: IgnitionModel, store: UserDefaults = .standard, now: Date = Date()) {
+    init(ignition: IgnitionModel, store: UserDefaults = .standard, now: Date = Date(),
+         record: ObservationRecordStore? = nil) {
         self.ignition = ignition
         self.store = store
-        self.shift = Self.decode(Shift.self, from: store.data(forKey: Keys.shift)) ?? Shift(started: now)
-        self.history = Self.decode([Shift].self, from: store.data(forKey: Keys.history)) ?? []
+        let record = record ?? ObservationRecordStore(defaults: store)
+        self.record = record
+        self.shift = record.loadShift() ?? Shift(started: now)
+        self.history = record.loadHistory()
         self.addressee = store.string(forKey: Keys.addressee) ?? ""
         self.siteElevationFeet = store.object(forKey: Keys.siteElevation) as? Int
         self.siteCoordinate = Self.decode(GeoPoint.self, from: store.data(forKey: Keys.siteCoordinate))
@@ -476,8 +482,12 @@ final class WeatherWatchModel {
         }
     }
 
-    private func persistShift() { persistEncoded(shift, forKey: Keys.shift) }
-    private func persistHistory() { persistEncoded(history, forKey: Keys.history) }
+    private func persistShift() {
+        if !record.saveShift(shift) { persistenceFailed = true }
+    }
+    private func persistHistory() {
+        if !record.saveHistory(history) { persistenceFailed = true }
+    }
     private func persistAddressee() { store.set(addressee, forKey: Keys.addressee) }
     private func persistSiteSource() { store.set(siteSource.rawValue, forKey: Keys.siteSource) }
     private func persistSiteFixedAt() {
@@ -504,8 +514,11 @@ final class WeatherWatchModel {
     }
 
     private enum Keys {
-        static let shift = "watch.shift"
-        static let history = "watch.history"
+        // The record itself now lives in files (ObservationRecordStore). These
+        // legacy keys are still READ once, to migrate, and deliberately left in
+        // place for a release so a rollback still finds the record.
+        static let shift = ObservationRecordStore.LegacyKeys.shift
+        static let history = ObservationRecordStore.LegacyKeys.history
         static let addressee = "watch.addressee"
         static let siteElevation = "watch.siteElevationFeet"
         static let siteCoordinate = "watch.siteCoordinate"

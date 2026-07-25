@@ -173,6 +173,13 @@ Each of these was deliberate. The authoring environment had **no Swift toolchain
 and no Xcode**, so CI was the only verification available; changes whose risk
 outweighs what CI can prove were written up rather than landed blind.
 
+> **Sequenced plan for everything below — and for the iOS capabilities at the end
+> of this document — is in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).**
+> Two dependencies there are worth knowing before picking any item up: the
+> storage move (R1) should target an App Group container from the start or the
+> record gets migrated twice once widgets exist, and the concurrency work (R4)
+> should precede any new target.
+
 ### R1. The observation record lives in `UserDefaults` — Medium
 
 `watch.shift` and `watch.history` are JSON blobs in `UserDefaults`, and `history`

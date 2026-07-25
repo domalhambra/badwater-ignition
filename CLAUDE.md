@@ -83,6 +83,7 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 | `DESIGN.md` | design system |
 | `docs/PARITY.md`, `docs/DATA_PROVENANCE.md`, `docs/APP_STORE.md` | parity machinery, table provenance, store listing draft |
 | `docs/RED_TEAM.md` | red-team findings, what's fixed vs. recommended, iOS capability roadmap |
+| `docs/IMPLEMENTATION_PLAN.md` | sequenced plan for the red-team recommendations + iOS capabilities (dependencies, verification, cloud-vs-Mac split) |
 | `ATTRIBUTION.md` | NWCG public-domain sourcing + disclaimer |
 
 ## Session logging

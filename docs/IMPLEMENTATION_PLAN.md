@@ -5,8 +5,47 @@ not done* (R1–R9) plus the iOS capabilities scoped out of that pass. Ordered b
 dependency first and value second, because two of these items are genuinely
 blocking for the rest and doing them late means doing some of them twice.
 
-Nothing here is started. Each item states what it changes, how it is **verified**,
-and whether it can be done in a cloud session or needs a Mac.
+Each item states what it changes, how it is **verified**, and whether it can be
+done in a cloud session or needs a Mac.
+
+## Status
+
+| Item | State |
+|---|---|
+| 1.1 Swift 6 language mode + `@MainActor` | **Done** |
+| 1.2 Record → App Group container | **Done** |
+| 2.1 Dew point clamp | **Done — finding withdrawn as wrong** |
+| 2.2 Undo stack | **Done** |
+| 2.3 Edit-sheet future timestamps | **Done** |
+| 2.4 `ZipArchive` bounds | **Done** |
+| 2.5 Lazy model construction | **Superseded** — see below |
+| 2.6 Dynamic Type on readouts | **Done** (needs a visual pass on a device) |
+| 2.7 Backup disclosure | **Done** |
+| 3.1 Haptics | **Done** |
+| 3.2 Obs cadence notifications | **Done** (delivery needs a device) |
+| 3.3 App Intents / Siri / Shortcuts | **Done** (Siri phrasing needs a device) |
+| 3.4 WidgetKit + Live Activity | **Not started** |
+| 3.5 watchOS app | **Not started** |
+
+A **Swift 6.1 toolchain became available** in the authoring environment partway
+through, so core work is now verified locally (`swift test`, vector regeneration,
+the parity harness) rather than only through CI. That is what turned 2.1 from an
+hour of Mac-only work into a five-minute proof that the finding was wrong.
+
+**2.5 is superseded.** The cost it named — `RootView.init` JSON-decoding the whole
+shift and history on every re-initialization and discarding it — was a property of
+the `UserDefaults` blobs. With 1.2 landed, construction reads two files through
+`ObservationRecordStore` and the expensive decode is gone. Re-measure before doing
+anything further; there may be nothing left to fix.
+
+**3.4 and 3.5 remain**, and they are the two largest items in this document
+(2–3 and 3–5 days). Both add new Xcode targets whose value is in behaviour that
+can only be judged on a device — a widget's refresh cadence and staleness
+presentation, a watch app's complication and `WatchConnectivity` sync. Landing
+either half-verified into a safety-relevant app is a worse trade than landing it
+later with a Mac in the loop. 1.2 has already done the hard part of the widget's
+dependency: the record is in an App Group container, so the extension can read it
+without a second migration.
 
 ---
 

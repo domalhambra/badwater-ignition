@@ -22,6 +22,91 @@ jobs:
       - name: Conformance vectors are fresh
         run: swift run badwater-vectors --check conformance/vectors.json
 
+  # The SwiftUI app target had no CI at all until this job: `App/` was never
+  # compiled and BadwaterIgnitionTests / BadwaterIgnitionUITests never ran, so a
+  # break in the presentation layer (or in the `canImport(AppKit)` macOS branches,
+  # which no one builds day to day) reached `main` unnoticed. This gate compiles
+  # both destinations and runs both app test bundles.
+  app-build:
+    name: SwiftUI app (iOS + macOS build, app tests)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # xcbeautify keeps xcodebuild's output readable in the Actions log; it is
+      # installed explicitly rather than assumed present on the runner image.
+      - name: Install XcodeGen + xcbeautify
+        run: brew install xcodegen xcbeautify
+
+      # BadwaterIgnition.xcodeproj is generated, not committed (see project.yml).
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Pin to whatever iOS runtime the runner image actually ships rather than a
+      # hardcoded device name, which silently rots as GitHub rolls Xcode forward.
+      - name: Select an iOS simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available --json \
+            | jq -r '[.devices | to_entries[]
+                      | select(.key | test("com.apple.CoreSimulator.SimRuntime.iOS"))
+                      | .value[] | select(.isAvailable)][0].udid')
+          if [ -z "$udid" ] || [ "$udid" = "null" ]; then
+            echo "No available iOS simulator on this runner:" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "Using simulator $udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      # Build before test so a compile break reports as a build failure rather
+      # than being buried in test-bundle output.
+      - name: Build (iOS Simulator)
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project BadwaterIgnition.xcodeproj \
+            -scheme BadwaterIgnition \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify
+
+      # The macOS destination is declared in project.yml but nothing builds it,
+      # so the `#elseif canImport(AppKit)` pasteboard/keyboard branches in
+      # WatchView have never been compiled. This step keeps them honest.
+      - name: Build (macOS)
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project BadwaterIgnition.xcodeproj \
+            -scheme BadwaterIgnition \
+            -destination "platform=macOS,arch=arm64" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify
+
+      - name: Unit tests (BadwaterIgnitionTests)
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project BadwaterIgnition.xcodeproj \
+            -scheme BadwaterIgnition \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:BadwaterIgnitionTests \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify
+
+      - name: UI tests (BadwaterIgnitionUITests)
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project BadwaterIgnition.xcodeproj \
+            -scheme BadwaterIgnition \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:BadwaterIgnitionUITests \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify
+
   web-conformance:
     name: Web parity (engine.js vs BadwaterCore vectors)
     runs-on: ubuntu-latest

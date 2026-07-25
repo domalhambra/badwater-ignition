@@ -4,7 +4,18 @@
 <dict>
     <!-- Badwater Ignition collects no data and does no tracking. It works
          fully offline; UserDefaults is used only to remember the user's own
-         last-used inputs on-device. -->
+         last-used inputs on-device.
+
+         Precise location: the app can take a single, user-initiated GPS fix to
+         fill the observation site's coordinate and elevation (when-in-use only;
+         it never tracks). That location is NOT listed under
+         NSPrivacyCollectedDataTypes because it is never transmitted off the
+         device — it is written to the on-device observation log and appears only
+         in spreadsheets the user themselves chooses to export or share. Apple
+         defines "collected" as transmitted off-device for developer access,
+         which this is not. If the app ever gains a network feature that sends a
+         position anywhere, this array must gain
+         NSPrivacyCollectedDataTypePreciseLocation. -->
     <key>NSPrivacyTracking</key>
     <false/>
     <key>NSPrivacyTrackingDomains</key>

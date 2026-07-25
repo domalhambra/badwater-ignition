@@ -28,11 +28,23 @@ final class WeatherWatchModel {
     /// ``ElevationBand`` for THIS elevation — not the (possibly stale) band left on
     /// the Ignition tab — and pre-fills the obs's absolute elevation. Nil restores
     /// the earlier behavior of falling back to the Ignition tab's band.
-    var siteElevationFeet: Int? { didSet { persistSiteElevation() } }
+    var siteElevationFeet: Int? { didSet { markSiteManuallyEdited(); persistSiteElevation() } }
     /// Sticky decimal lat/long for the current position (typed or GPS-filled).
     /// Folded into each logged obs so the coordinate lands in the spreadsheet
     /// export (IMET column J) without re-entry every hour.
-    var siteCoordinate: GeoPoint? { didSet { persistSiteCoordinate() } }
+    var siteCoordinate: GeoPoint? { didSet { markSiteManuallyEdited(); persistSiteCoordinate() } }
+    /// How the sticky site position was obtained. A GPS fill is captioned as
+    /// such so it is never mistaken for a surveyed or map-read value — and any
+    /// hand edit to the elevation or the coordinate flips this straight back to
+    /// ``SiteSource/manual``, which is the whole override mechanism.
+    private(set) var siteSource: SiteSource { didSet { persistSiteSource() } }
+    /// When the GPS fix backing the site position was taken; `nil` once the
+    /// operator has edited the position by hand.
+    private(set) var siteFixedAt: Date?
+    /// Set while ``applySiteFix(coordinate:elevationFeet:at:)`` writes the site
+    /// fields, so its own writes don't read as a manual override — the same
+    /// idiom ``IgnitionModel`` uses for its clock refresh.
+    private var applyingSiteFix = false
     /// When the operator last explicitly reviewed the site factors this shift
     /// (aspect, slope, elevation, location). Nil until confirmed — the Watch
     /// screen gates the first log of a shift on this, so the persisted aspect
@@ -41,6 +53,12 @@ final class WeatherWatchModel {
     /// The most recently deleted obs, held (in memory only) for an undo toast —
     /// a glove mis-tap must not silently erase part of the record (red-team #7).
     private(set) var lastRemovedObs: WeatherObs?
+    /// True once any attempt to write the observation record to disk has failed.
+    /// The in-memory log is still intact and still exportable — this exists so
+    /// the screen can say "export before you relaunch" instead of the record
+    /// quietly not surviving. Never reset: one failure is worth reporting for
+    /// the rest of the session.
+    private(set) var persistenceFailed = false
 
     private let ignition: IgnitionModel
     private let store: UserDefaults
@@ -55,6 +73,46 @@ final class WeatherWatchModel {
         self.siteCoordinate = Self.decode(GeoPoint.self, from: store.data(forKey: Keys.siteCoordinate))
         self.siteConfirmedAt = (store.object(forKey: Keys.siteConfirmed) as? Double)
             .map { Date(timeIntervalSince1970: $0) }
+        self.siteSource = SiteSource(rawValue: store.string(forKey: Keys.siteSource) ?? "") ?? .manual
+        self.siteFixedAt = (store.object(forKey: Keys.siteFixedAt) as? Double)
+            .map { Date(timeIntervalSince1970: $0) }
+    }
+
+    /// Where the sticky site position came from.
+    enum SiteSource: String, Codable {
+        /// Typed by the operator (or restored from a previous manual entry).
+        case manual
+        /// Filled from a one-shot device GPS fix.
+        case gps
+    }
+
+    /// Accept a GPS fix into the sticky site position.
+    ///
+    /// The elevation is only written when the fix actually carried one, so a
+    /// coordinate-only fix (no vertical component) leaves a previously entered
+    /// elevation intact rather than blanking it. Writes here are flagged so they
+    /// don't trip the manual-override detection.
+    ///
+    /// - Parameter elevationFeet: already normalized by ``SiteElevation`` —
+    ///   rounded to the nearest 100 ft — not a raw sensor altitude.
+    func applySiteFix(coordinate: GeoPoint, elevationFeet: Int?, at fixedAt: Date) {
+        applyingSiteFix = true
+        defer { applyingSiteFix = false }
+        siteCoordinate = coordinate
+        if let elevationFeet { siteElevationFeet = elevationFeet }
+        siteSource = .gps
+        siteFixedAt = fixedAt
+        persistSiteFixedAt()
+    }
+
+    /// Any hand edit to the site position takes it back over from the GPS fill.
+    private func markSiteManuallyEdited() {
+        guard !applyingSiteFix else { return }
+        if siteSource != .manual { siteSource = .manual }
+        if siteFixedAt != nil {
+            siteFixedAt = nil
+            persistSiteFixedAt()
+        }
     }
 
     /// True until ``confirmSite(at:)`` — the once-per-shift explicit review of
@@ -371,16 +429,43 @@ final class WeatherWatchModel {
 
     // MARK: - Persistence (JSON blobs; arrays grow across a shift/season)
 
-    private func persistShift() { store.set(try? JSONEncoder().encode(shift), forKey: Keys.shift) }
-    private func persistHistory() { store.set(try? JSONEncoder().encode(history), forKey: Keys.history) }
+    /// Encode-and-store, refusing to write `nil` on failure.
+    ///
+    /// This was `store.set(try? JSONEncoder().encode(shift), forKey:)`, which is
+    /// a silent-data-loss hazard: `try?` yields `nil` on an encode failure, and
+    /// `UserDefaults.set(nil, forKey:)` **removes the key** — erasing the very
+    /// observation log the write was meant to save, with the next launch
+    /// decoding a fresh empty shift and no indication anything was lost. That
+    /// record is evidentiary: it is what went out over the radio net.
+    ///
+    /// `Shift` has no throwing members today, so this is a latent hazard rather
+    /// than an active bug — but the failure mode is total, silent loss and the
+    /// guard costs four lines. On failure the in-memory record is untouched and
+    /// the previous stored copy is left in place; ``persistenceFailed`` lets the
+    /// screen tell the crew to export before relaunching.
+    private func persistEncoded<T: Encodable>(_ value: T, forKey key: String) {
+        do {
+            store.set(try JSONEncoder().encode(value), forKey: key)
+        } catch {
+            persistenceFailed = true
+        }
+    }
+
+    private func persistShift() { persistEncoded(shift, forKey: Keys.shift) }
+    private func persistHistory() { persistEncoded(history, forKey: Keys.history) }
     private func persistAddressee() { store.set(addressee, forKey: Keys.addressee) }
+    private func persistSiteSource() { store.set(siteSource.rawValue, forKey: Keys.siteSource) }
+    private func persistSiteFixedAt() {
+        if let at = siteFixedAt { store.set(at.timeIntervalSince1970, forKey: Keys.siteFixedAt) }
+        else { store.removeObject(forKey: Keys.siteFixedAt) }
+    }
     private func persistSiteElevation() {
         // Store nil as an absent key (not NSNull) so a fresh model reads it back as nil.
         if let ft = siteElevationFeet { store.set(ft, forKey: Keys.siteElevation) }
         else { store.removeObject(forKey: Keys.siteElevation) }
     }
     private func persistSiteCoordinate() {
-        if let c = siteCoordinate { store.set(try? JSONEncoder().encode(c), forKey: Keys.siteCoordinate) }
+        if let c = siteCoordinate { persistEncoded(c, forKey: Keys.siteCoordinate) }
         else { store.removeObject(forKey: Keys.siteCoordinate) }
     }
     private func persistSiteConfirmed() {
@@ -400,6 +485,8 @@ final class WeatherWatchModel {
         static let siteElevation = "watch.siteElevationFeet"
         static let siteCoordinate = "watch.siteCoordinate"
         static let siteConfirmed = "watch.siteConfirmedAt"
+        static let siteSource = "watch.siteSource"
+        static let siteFixedAt = "watch.siteFixedAt"
     }
 }
 

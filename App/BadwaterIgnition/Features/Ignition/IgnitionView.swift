@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 import BadwaterCore
 
 /// The Ignition screen. A pinned PIG summary keeps the result on screen at all
@@ -10,9 +9,6 @@ import BadwaterCore
 struct IgnitionView: View {
     @Bindable var model: IgnitionModel
     @Environment(\.scenePhase) private var scenePhase
-    /// Keeps month/time tracking the wall clock across a long shift; the model
-    /// ignores ticks once the operator overrides either picker.
-    private let clockTick = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ScrollView {
@@ -28,7 +24,17 @@ struct IgnitionView: View {
         .safeAreaInset(edge: .top, spacing: 0) { summaryBar }
         .background(BadwaterColor.background)
         .navigationTitle("Ignition")
-        .onReceive(clockTick) { _ in model.refreshClock() }
+        // Keeps month/time tracking the wall clock across a long shift; the model
+        // ignores ticks once the operator overrides either picker. A `.task` loop
+        // rather than an autoconnected `Timer.publish`, which kept a run-loop
+        // source alive — and re-evaluated this body every minute — for the whole
+        // life of the view, including while the Ignition tab was off screen.
+        .task {
+            while !Task.isCancelled {
+                model.refreshClock()
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.refreshClock() }
         }

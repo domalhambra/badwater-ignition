@@ -55,6 +55,37 @@ struct StepperCard: View {
     }
 }
 
+/// What a text field needs its keyboard to be able to produce.
+///
+/// Named by capability rather than by UIKit type so the choice is reviewable:
+/// `.numberPad` has **no minus sign**, which silently makes a field unable to
+/// accept a negative value — the bug that stopped a site elevation below sea
+/// level (Badwater Basin is −282 ft) from being enterable at all.
+enum FieldKeyboard {
+    case text
+    /// Whole numbers, no sign — counts and other never-negative values.
+    case unsignedInteger
+    /// Signed and/or fractional values: elevations below sea level, decimal
+    /// latitude and longitude.
+    case signedNumber
+}
+
+extension View {
+    /// Apply a field keyboard. Keyboard types are iOS-only; on macOS this is a
+    /// no-op so shared views compile for both destinations.
+    @ViewBuilder func fieldKeyboard(_ kind: FieldKeyboard) -> some View {
+        #if os(iOS)
+        switch kind {
+        case .text: self.keyboardType(.default)
+        case .unsignedInteger: self.keyboardType(.numberPad)
+        case .signedNumber: self.keyboardType(.numbersAndPunctuation)
+        }
+        #else
+        self
+        #endif
+    }
+}
+
 /// A read-only stat card (e.g. dew point, wet-bulb depression).
 struct StatCard: View {
     let label: String

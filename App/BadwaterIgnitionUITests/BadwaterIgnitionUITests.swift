@@ -1,85 +1,156 @@
 import XCTest
 
-/// Black-box UI smoke tests. These require a simulator/device (run from Xcode);
-/// they exercise the navigation and the RH → Ignition hand-off using the
-/// accessibility identifiers set on the controls.
+/// Black-box UI smoke tests: navigation, the RH → Ignition hand-off, and the
+/// Obs capture/log loop, driven through the accessibility identifiers set on the
+/// controls.
+///
+/// ### Why these look different from typical XCUITest code
+///
+/// Two things had to change before this suite could pass anywhere. Both were
+/// invisible until the app target got a CI job — until then nothing ever ran it.
+///
+/// 1. **Element type is not part of the contract.** The old assertions queried
+///    `app.staticTexts["result-Unshaded"]`, but `ResultCard` applies
+///    `.accessibilityElement(children: .ignore)`, which resolves to an *other*
+///    element, not static text. The identifier is the stable contract; which
+///    `XCUIElementType` SwiftUI maps a view onto is an implementation detail
+///    that changes with OS releases. ``element(_:)`` matches on identifier
+///    alone, so a future SwiftUI reshuffle can't rot the suite the same way.
+///
+/// 2. **State leaks between tests.** UI tests share one simulator container, and
+///    this app persists nearly everything — the shift log, retained history,
+///    site factors, weather inputs. `testWatchTabLogsAnObservation` logs an
+///    observation, which is exactly the state that breaks the empty-state
+///    assertion on the *next* run. Every launch here passes the reset flag so
+///    the app persists into a throwaway defaults suite and each test starts from
+///    first-launch defaults.
 final class BadwaterIgnitionUITests: XCTestCase {
 
     override func setUp() {
         continueAfterFailure = false
     }
 
-    func testLaunchShowsBothPigResults() {
+    /// Launch with a clean persistent store.
+    private func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
+        // Keep in sync with AppEnvironment.resetStateArgument.
+        app.launchArguments += ["-uiTestingResetState"]
         app.launch()
+        return app
+    }
+
+    func testLaunchShowsBothPigResults() {
+        let app = launchApp()
         // The Ignition tab shows both shaded and unshaded results on launch.
-        XCTAssertTrue(app.staticTexts["result-Unshaded"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["result-Shaded"].exists)
-        XCTAssertTrue(app.otherElements["calc-chain"].exists)
+        XCTAssertTrue(app.element("result-Unshaded").waitForExistence(timeout: 10),
+                      "Unshaded PIG result card missing on launch")
+        XCTAssertTrue(app.element("result-Shaded").exists,
+                      "Shaded PIG result card missing on launch")
+        XCTAssertTrue(app.element("calc-chain").exists,
+                      "Calculation chain strip missing on launch")
     }
 
     func testHumidityTabAndHandoff() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchApp()
 
         app.tabBars.buttons["Humidity"].tap()
-        XCTAssertTrue(app.otherElements["rh-readout"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.element("rh-readout").waitForExistence(timeout: 10),
+                      "RH readout missing on the Humidity tab")
 
         // "Use in ignition calc" pushes RH into the Ignition tab and switches to it.
-        app.buttons["use-in-ignition"].tap()
-        XCTAssertTrue(app.staticTexts["result-Unshaded"].waitForExistence(timeout: 5))
+        app.element("use-in-ignition").tap()
+        XCTAssertTrue(app.element("result-Unshaded").waitForExistence(timeout: 10),
+                      "Hand-off did not land on the Ignition tab")
     }
 
     func testDryBulbIsAdjustable() {
-        let app = XCUIApplication()
-        app.launch()
-        let dryBulb = app.otherElements["Dry bulb"]
-        XCTAssertTrue(dryBulb.waitForExistence(timeout: 5))
+        let app = launchApp()
+        let dryBulb = app.element("Dry bulb")
+        XCTAssertTrue(dryBulb.waitForExistence(timeout: 10), "Dry bulb stepper missing")
         // Adjustable element: a swipe up should increment without crashing.
         dryBulb.swipeUp()
-        XCTAssertTrue(app.staticTexts["result-Unshaded"].exists)
+        XCTAssertTrue(app.element("result-Unshaded").exists,
+                      "PIG result stopped rendering after adjusting dry bulb")
     }
 
     func testWetBulbSourceRevealsWetBulbInput() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchApp()
         // Switching the humidity source to "From wet bulb" reveals the wet-bulb
         // stepper; the PIG results keep rendering with the derived RH.
-        app.buttons["From wet bulb"].tap()
-        XCTAssertTrue(app.otherElements["Wet bulb"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.otherElements["derived-rh"].exists)
-        XCTAssertTrue(app.staticTexts["result-Unshaded"].exists)
+        let wetBulbSource = app.element("From wet bulb")
+        XCTAssertTrue(wetBulbSource.waitForExistence(timeout: 10),
+                      "Humidity source chip missing")
+        wetBulbSource.tap()
+        XCTAssertTrue(app.element("Wet bulb").waitForExistence(timeout: 10),
+                      "Wet bulb stepper did not appear")
+        XCTAssertTrue(app.element("derived-rh").exists,
+                      "Derived RH card did not appear in wet-bulb mode")
+        XCTAssertTrue(app.element("result-Unshaded").exists,
+                      "PIG result stopped rendering in wet-bulb mode")
     }
 
     func testWatchTabLogsAnObservation() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchApp()
 
         app.tabBars.buttons["Obs"].tap()
         // Fresh shift shows the empty state until the first log.
-        XCTAssertTrue(app.otherElements["watch-empty"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.element("watch-empty").waitForExistence(timeout: 10),
+                      "Obs tab did not start from an empty shift")
 
         // The first log of a shift is gated on an explicit site review.
-        app.buttons["confirm-site"].tap()
+        app.element("confirm-site").tap()
 
         // Logging freezes the current reading into the shift: the hero (both PIG
         // results + the radio line) appears and the empty state goes away.
-        app.buttons["log-observation"].tap()
-        XCTAssertTrue(app.staticTexts["result-Unshaded"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["result-Shaded"].exists)
-        XCTAssertTrue(app.staticTexts["radio-line"].exists)
-        XCTAssertFalse(app.otherElements["watch-empty"].exists)
+        app.element("log-observation").tap()
+        XCTAssertTrue(app.element("result-Unshaded").waitForExistence(timeout: 10),
+                      "Logged obs hero did not appear")
+        XCTAssertTrue(app.element("result-Shaded").exists,
+                      "Logged obs hero is missing the shaded result")
+        XCTAssertTrue(app.element("radio-line").exists,
+                      "Logged obs hero is missing the radio line")
+        XCTAssertFalse(app.element("watch-empty").exists,
+                       "Empty state still showing after logging an observation")
     }
 
     func testWatchCaptureCardIsPresent() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchApp()
 
         app.tabBars.buttons["Obs"].tap()
         // The pending capture card is always available — note field, dry-bulb
         // stepper, and the live PIG preview — so a reading can be built and logged.
-        XCTAssertTrue(app.textFields["obs-note"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.otherElements["Dry bulb"].exists)
-        XCTAssertTrue(app.staticTexts["pending-pig"].exists)
+        XCTAssertTrue(app.element("obs-note").waitForExistence(timeout: 10),
+                      "Obs note field missing")
+        XCTAssertTrue(app.element("Dry bulb").exists, "Dry bulb stepper missing on Obs")
+        XCTAssertTrue(app.element("pending-pig").exists, "Pending PIG preview missing")
+    }
+
+    /// The GPS autofill button is present, and the hand-typed position fields sit
+    /// alongside it — the override path stays available whether or not a
+    /// simulator can produce a fix.
+    func testSiteGPSButtonAndManualPositionCoexist() {
+        let app = launchApp()
+
+        app.tabBars.buttons["Obs"].tap()
+        XCTAssertTrue(app.element("use-gps").waitForExistence(timeout: 10),
+                      "GPS autofill button missing")
+        XCTAssertTrue(app.element("Site elevation").exists,
+                      "Site elevation field missing — that is the manual override path")
+        XCTAssertTrue(app.element("Latitude").exists, "Latitude field missing")
+        XCTAssertTrue(app.element("Longitude").exists, "Longitude field missing")
+    }
+}
+
+private extension XCUIApplication {
+    /// The element carrying this accessibility identifier, whatever element type
+    /// SwiftUI resolved the view to.
+    ///
+    /// Querying a specific type (`staticTexts[...]`, `otherElements[...]`) bakes
+    /// a SwiftUI implementation detail into the test: a view with
+    /// `.accessibilityElement(children: .ignore)` surfaces as `.other`, a plain
+    /// `Text` as `.staticText`, and which is which shifts between OS versions.
+    /// The identifier is the part the app actually promises.
+    func element(_ identifier: String) -> XCUIElement {
+        descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 }

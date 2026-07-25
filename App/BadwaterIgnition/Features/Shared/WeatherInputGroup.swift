@@ -82,8 +82,8 @@ struct WeatherInputGroup: View {
             }
             Spacer()
             HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("\(rh)").font(BadwaterFont.readout(32)).foregroundStyle(BadwaterColor.accent)
-                Text("%").font(BadwaterFont.readout(18)).foregroundStyle(BadwaterColor.accent)
+                Text("\(rh)").readout(32).foregroundStyle(BadwaterColor.accent)
+                Text("%").readout(18).foregroundStyle(BadwaterColor.accent)
             }
         }
         .padding(14)

@@ -59,6 +59,13 @@ struct WatchView: View {
     private let obsCadence: TimeInterval = 60 * 60
     /// Which metric the shift trend plots.
     @State private var trendMetric: ObservationMetric = .probabilityOfIgnitionUnshaded
+    /// Haptic triggers. A gloved tap on a phone held at arm's length gives no
+    /// tactile confirmation of its own, and the operator is usually looking at
+    /// the weather rather than the screen — so a log and a delete each announce
+    /// themselves. `.success` for a log, `.warning` for a deletion, matching what
+    /// those feedbacks mean everywhere else on the platform.
+    @State private var logHaptic = 0
+    @State private var deleteHaptic = 0
 
     private var hasObs: Bool { !model.shift.obs.isEmpty }
     /// The trend overlays every retained day, so it's available once ≥2 obs exist
@@ -110,6 +117,8 @@ struct WatchView: View {
         }
         .onChange(of: scenePhase) { _, phase in if phase == .active { tick() } }
         .onAppear { tick() }
+        .sensoryFeedback(.success, trigger: logHaptic)
+        .sensoryFeedback(.warning, trigger: deleteHaptic)
     }
 
     /// Advance the wall-clock reference and re-seed the pending obs time with it.
@@ -206,7 +215,7 @@ struct WatchView: View {
         return VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(obs.timeLabel())
-                    .font(BadwaterFont.readout(24))
+                    .readout(24)
                     .foregroundStyle(BadwaterColor.ink)
                 Text("Latest").fieldLabel()
                 Spacer()
@@ -360,7 +369,7 @@ struct WatchView: View {
         let e = obs.estimate
         return HStack(spacing: 12) {
             Text(obs.timeLabel())
-                .font(BadwaterFont.readout(17)).monospacedDigit()
+                .readout(17)
                 .foregroundStyle(BadwaterColor.ink)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -387,6 +396,7 @@ struct WatchView: View {
             .accessibilityLabel("Edit \(obs.timeLabel()) observation")
             Button(role: .destructive) {
                 model.removeObs(id: obs.id)
+                deleteHaptic += 1
                 showUndo = true
             } label: {
                 Image(systemName: "trash")
@@ -564,7 +574,7 @@ struct WatchView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(dayLabel(shift))
-                    .font(BadwaterFont.readout(16)).foregroundStyle(BadwaterColor.ink)
+                    .readout(16).foregroundStyle(BadwaterColor.ink)
                 Text(archivedSubtitle(shift))
                     .font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted).lineLimit(1)
             }
@@ -669,6 +679,7 @@ struct WatchView: View {
         let gated = model.needsSiteConfirmation
         return Button {
             model.logObs(at: pendingTime, wind: ignition.wind, note: note.isEmpty ? nil : note)
+            logHaptic += 1
             note = ""
             // Hand the time back to the clock. This used to pre-fill the *next*
             // hourly slot (`pendingTime + 1 h`), which forward-dates the reading:
@@ -727,7 +738,7 @@ private struct ObsTimeField: View {
             Text("Obs time").fieldLabel()
             HStack(spacing: 8) {
                 TextField("HH:MM", text: $text)
-                    .font(BadwaterFont.inputValue).monospacedDigit()
+                    .readout(32, weight: .bold)
                     // .numbersAndPunctuation, not .numberPad: the field accepts
                     // "14:35" as well as "1435", and the number pad has no colon.
                     .fieldKeyboard(.signedNumber)

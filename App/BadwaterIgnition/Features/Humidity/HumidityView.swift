@@ -55,9 +55,9 @@ struct HumidityView: View {
     private var bigResult: some View {
         VStack(spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("\(model.result.relativeHumidity)").font(BadwaterFont.readout(72))
+                Text("\(model.result.relativeHumidity)").readout(72)
                     .foregroundStyle(BadwaterColor.accent)
-                Text("%").font(BadwaterFont.readout(30)).foregroundStyle(BadwaterColor.accent)
+                Text("%").readout(30).foregroundStyle(BadwaterColor.accent)
             }
             Text("Relative humidity").fieldLabel()
         }

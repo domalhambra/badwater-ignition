@@ -14,7 +14,7 @@ struct StepperCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label).fieldLabel()
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("\(value)").font(BadwaterFont.inputValue).foregroundStyle(BadwaterColor.ink)
+                Text("\(value)").readout(32, weight: .bold).foregroundStyle(BadwaterColor.ink)
                 Text(unit).font(BadwaterFont.body).foregroundStyle(BadwaterColor.muted)
             }
             HStack(spacing: 8) {
@@ -96,7 +96,7 @@ struct StatCard: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).fieldLabel()
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(BadwaterFont.inputValue).foregroundStyle(BadwaterColor.ink)
+                Text(value).readout(32, weight: .bold).foregroundStyle(BadwaterColor.ink)
                 Text(unit).font(BadwaterFont.body).foregroundStyle(BadwaterColor.muted)
             }
         }
@@ -302,8 +302,7 @@ struct PIGSummaryBar: View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label).font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(BadwaterFont.readout(18)).foregroundStyle(BadwaterColor.ink)
-                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text(value).readout(18, minimumScale: 0.6).foregroundStyle(BadwaterColor.ink)
                 if let unit {
                     Text(unit).font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
                 }
@@ -318,8 +317,8 @@ struct PIGSummaryBar: View {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(label).font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
-                    Text("\(pig)").font(BadwaterFont.readout(26)).foregroundStyle(color)
-                    Text("%").font(BadwaterFont.readout(15)).foregroundStyle(color)
+                    Text("\(pig)").readout(26).foregroundStyle(color)
+                    Text("%").readout(15).foregroundStyle(color)
                 }
             }
             RoundedRectangle(cornerRadius: 1.5)
@@ -379,8 +378,8 @@ struct ResultCard: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).fieldLabel()
             HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text("\(pig)").font(BadwaterFont.readout(46)).foregroundStyle(severity)
-                Text("%").font(BadwaterFont.readout(22)).foregroundStyle(severity)
+                Text("\(pig)").readout(46).foregroundStyle(severity)
+                Text("%").readout(22).foregroundStyle(severity)
             }
             Text(subtitle).font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted)
             edgeCaption

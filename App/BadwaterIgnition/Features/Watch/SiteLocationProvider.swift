@@ -22,7 +22,13 @@ import CoreLocation
 ///
 /// Nothing here is persisted or transmitted; the fix exists only long enough for
 /// the operator to accept it into the site fields, which they can then edit.
-@MainActor
+///
+/// Deliberately **not** `@MainActor`, matching `IgnitionModel` and
+/// `WeatherWatchModel`. Delegate callbacks hop to the main queue explicitly
+/// instead, so every mutation of the observable `status` happens on main without
+/// this one type having isolation the other models don't. Annotating all three
+/// together — and moving the core to the Swift 6 language mode — is tracked as a
+/// single piece of work in `docs/RED_TEAM.md` (R4).
 @Observable
 final class SiteLocationProvider {
 
@@ -182,17 +188,20 @@ final class SiteLocationProvider {
         var onFailure: ((Error) -> Void)?
         var onAuthorizationChange: (() -> Void)?
 
+        // CoreLocation delivers on the queue the manager was created on, which is
+        // main here — but these hop explicitly rather than rely on that, since
+        // every one of them mutates observable state SwiftUI reads.
         func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
             guard let location = locations.last else { return }
-            MainActor.assumeIsolated { onLocation?(location) }
+            DispatchQueue.main.async { [onLocation] in onLocation?(location) }
         }
 
         func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-            MainActor.assumeIsolated { onFailure?(error) }
+            DispatchQueue.main.async { [onFailure] in onFailure?(error) }
         }
 
         func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-            MainActor.assumeIsolated { onAuthorizationChange?() }
+            DispatchQueue.main.async { [onAuthorizationChange] in onAuthorizationChange?() }
         }
     }
     #endif

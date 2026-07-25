@@ -142,6 +142,7 @@ workflow still helps by pushing the port commit onto your PR branch on demand
 | Radio overrides | `forceLocation` / `suppressLocation` operator toggles | no UI affordance | Vectors pin the common path; add with the UI when ported. |
 | Month-group caption | "Feb–Mar–Apr & Aug–Sep–Oct" | "Feb Mar Apr Oct" (drops Aug–Sep) | Display copy only; fix with any app.js touch. |
 | Obs timestamps | real `Date`s; a shift can span local midnight (multi-sheet export) | minutes-of-day + per-shift date | Web model is day-scoped by design; xlsx vectors use one-day shifts. |
+| GPS site autofill | `SiteElevation` (round to 100 ft, band-straddle check) + `GeoPoint.isValid`, driven by CoreLocation in `SiteLocationProvider` | site elevation and lat/long typed only; no Geolocation API use | **Deliberately not ported yet.** These are device-sensor normalization rules, not IRPG calculation — nothing in `engine.js` calls them, so porting now would add dead code to the shipped PWA and force every field device to refetch its cache for no user benefit. Port them together with web Geolocation autofill, in the same change. Not in `vectors.json`, so parity CI stays green and honest meanwhile. |
 
 ## The structural endgame (if wanted later)
 

@@ -43,6 +43,15 @@ targets:
         INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        # Required for the one-shot site GPS fix (SiteLocationProvider). Without
+        # this key the authorization request is ignored and the fix never
+        # arrives. When-in-use only: the app takes a single fix on demand and
+        # never tracks, so there is no "always" mode to justify.
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: >-
+          Fills the observation site's coordinate and elevation from a single GPS
+          fix so they don't have to be typed on the line. The position stays on
+          this device — it is only written to the observation log and the
+          spreadsheets you export.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: PoolTeal
         SWIFT_VERSION: "5.9"

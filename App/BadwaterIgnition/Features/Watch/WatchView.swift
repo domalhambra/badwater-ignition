@@ -1,5 +1,4 @@
 import SwiftUI
-import Combine
 import BadwaterCore
 #if canImport(UIKit)
 import UIKit
@@ -10,8 +9,9 @@ import AppKit
 /// The **Watch** screen (Weather Watch — the shift observation log).
 ///
 /// The full loop: the latest-reading hero and its frozen radio broadcast, a
-/// shift trend, the shift log (with delete + undo), the sticky site / radio
-/// header, the pending-obs capture card (weather is the shared ``IgnitionModel``,
+/// shift trend, the shift log (with delete + undo), the site & radio block
+/// (``SiteEditor``, which also owns the GPS position autofill), the pending-obs
+/// capture card (weather is the shared ``IgnitionModel``,
 /// so it mirrors the Ignition tab), and the shift exports (IMET `.xlsx`, NWS
 /// spot, Notes). The first log of a shift is gated on an explicit site review, so
 /// a persisted default can never silently feed a broadcast.
@@ -21,14 +21,19 @@ struct WatchView: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var scenePhase
 
-    /// The timestamp a Log tap will record. Seeded to "now"; editable via the obs
-    /// time steppers (off-hour or back-filled readings), reset to now after a log.
+    /// The timestamp a Log tap will record. Seeded to "now" and **re-seeded** as
+    /// the clock moves (on the tick, on appear, on foreground) unless the
+    /// operator has taken it over by typing or nudging — see ``obsTimeIsManual``.
     @State private var pendingTime = Date()
+    /// The value this view last auto-seeded ``pendingTime`` to. Comparing the two
+    /// is how a manual edit is detected without threading a callback through
+    /// `ObsTimeField`: any type or nudge moves `pendingTime` away from this.
+    @State private var autoSeededObsTime = Date()
     /// The optional caveat for this one reading; cleared after it's logged.
     @State private var note = ""
-    /// Typed site coordinate (committed to the model only when both parse).
-    @State private var latText = ""
-    @State private var lonText = ""
+    /// The workbook bytes for a presented export sheet, built once when the
+    /// export is requested rather than on every body pass.
+    @State private var workbookDocument: IMETWorkbookDocument?
     /// Whether an undo affordance for the last delete is showing.
     @State private var showUndo = false
     /// The logged observation being corrected in the edit sheet (nil = closed).
@@ -41,10 +46,13 @@ struct WatchView: View {
     @State private var confirmClearHistory = false
     /// The archived day pending deletion (nil = no confirm showing).
     @State private var shiftToDelete: Shift?
-    /// Wall-clock reference for the "next obs due" countdown; ticks every 30 s and
-    /// refreshes on foreground so the strip counts down without a manual nudge.
+    /// Wall-clock reference for the "next obs due" countdown and the pending obs
+    /// time. Advanced by a `.task` loop (see ``body``) rather than a
+    /// `Timer.publish` — an autoconnected publisher keeps a run-loop source alive
+    /// for as long as the view exists, including while the Obs tab is off screen,
+    /// and every tick re-evaluated this whole body. Battery is a safety input on
+    /// a 16-hour shift.
     @State private var now = Date()
-    private let dueTick = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     /// Standard hourly weather-watch cadence for the next observation.
     private let obsCadence: TimeInterval = 60 * 60
@@ -63,6 +71,7 @@ struct WatchView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metric.sectionSpacing) {
                 header
+                if model.persistenceFailed { persistenceWarning }
                 obsDueStrip
                 if let latest = model.latest {
                     hero(latest)
@@ -72,7 +81,7 @@ struct WatchView: View {
                 }
                 if canTrend { trendSection }
                 if hasObs { shiftLogSection }
-                siteSection
+                SiteEditor(model: model)
                 captureCard
                 if hasExportableData { exportSection }
                 if !model.history.isEmpty { historySection }
@@ -90,15 +99,58 @@ struct WatchView: View {
         }
         .background(BadwaterColor.background)
         .navigationTitle("Obs")
-        .onReceive(dueTick) { now = $0 }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { now = Date() } }
-        .onAppear {
-            now = Date()
-            if let c = model.siteCoordinate {
-                latText = String(c.latitude)
-                lonText = String(c.longitude)
+        // Suspends with the view: leaving the tab cancels the loop, and a
+        // suspended app doesn't run it at all.
+        .task {
+            while !Task.isCancelled {
+                tick()
+                try? await Task.sleep(for: .seconds(30))
             }
         }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { tick() } }
+        .onAppear { tick() }
+    }
+
+    /// Advance the wall-clock reference and re-seed the pending obs time with it.
+    private func tick() {
+        now = Date()
+        reseedObsTime(now)
+    }
+
+    // MARK: - Pending obs time
+
+    /// True once the operator has typed or nudged the obs time — detected by the
+    /// value having moved away from what this view last auto-seeded. Auto-seeding
+    /// then stands down until the next log.
+    ///
+    /// Compared at **minute** granularity, not by equality: `ObsTimeField` echoes
+    /// the value back through its `"HH:MM"` text field, and that round trip zeroes
+    /// the seconds. An exact comparison would read the echo as a manual edit and
+    /// stop the clock tracking within one tick of the view appearing — the very
+    /// bug this mechanism exists to fix. Every real edit (typing a different time,
+    /// a ±5 m nudge) moves the value by at least a minute.
+    private var obsTimeIsManual: Bool {
+        !Calendar.current.isDate(pendingTime, equalTo: autoSeededObsTime, toGranularity: .minute)
+    }
+
+    /// Track the wall clock unless the operator has taken the time over.
+    ///
+    /// Without this the obs timestamp was seeded exactly once, when the view was
+    /// first constructed, and never moved except by a log. An app opened at 0900
+    /// and returned to at 1400 stamped **0900** — and `pendingObs` derives the
+    /// month and the IRPG time-of-day band from that timestamp, so the reading
+    /// was filed under the wrong correction column and produced the wrong PIG.
+    private func reseedObsTime(_ date: Date) {
+        guard !obsTimeIsManual else { return }
+        pendingTime = date
+        autoSeededObsTime = date
+    }
+
+    /// Hand the obs time back to the clock — after a log, or after a new shift.
+    private func resetObsTimeToNow() {
+        let t = Date()
+        pendingTime = t
+        autoSeededObsTime = t
     }
 
     // MARK: - Next-obs-due annunciator
@@ -340,76 +392,6 @@ struct WatchView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(BadwaterColor.hairline))
     }
 
-    // MARK: - Site & radio header + confirmation gate (M2)
-
-    private var siteSection: some View {
-        VStack(alignment: .leading, spacing: Metric.cardSpacing) {
-            SectionHeader(title: "Site & radio", annotation: "IMET header")
-            siteGate
-            VStack(alignment: .leading, spacing: 10) {
-                labeledField("Radio addressee", "e.g. Division W", $model.addressee)
-                labeledField("Location name", "e.g. 659 Road", locationNameBinding)
-                labeledField("Division", "e.g. Division W", divisionBinding)
-                labeledField("Site elevation", "feet MSL", siteElevationBinding, numeric: true)
-                HStack(spacing: 10) {
-                    labeledField("Latitude", "38.214", $latText, numeric: true, decimal: true)
-                    labeledField("Longitude", "-112.398", $lonText, numeric: true, decimal: true)
-                }
-            }
-            .onChange(of: latText) { _, _ in commitCoordinate() }
-            .onChange(of: lonText) { _, _ in commitCoordinate() }
-        }
-    }
-
-    /// The once-per-shift site review that gates the first log (red-team #9).
-    @ViewBuilder private var siteGate: some View {
-        if model.needsSiteConfirmation {
-            StatusStrip(icon: "checkmark.shield", message: "Review the site factors, then confirm",
-                        caution: true, actionTitle: "Confirm site",
-                        action: { model.confirmSite() },
-                        identifier: "site-gate", actionIdentifier: "confirm-site")
-        } else {
-            StatusStrip(icon: "checkmark.shield.fill", message: "Site confirmed for this shift",
-                        identifier: "site-confirmed")
-        }
-    }
-
-    private func commitCoordinate() {
-        if let la = Double(latText), let lo = Double(lonText) {
-            model.siteCoordinate = GeoPoint(latitude: la, longitude: lo)
-        } else {
-            model.siteCoordinate = nil
-        }
-    }
-
-    private var locationNameBinding: Binding<String> {
-        Binding(get: { model.shift.locationName ?? "" },
-                set: { model.shift.locationName = $0.isEmpty ? nil : $0 })
-    }
-    private var divisionBinding: Binding<String> {
-        Binding(get: { model.shift.division ?? "" },
-                set: { model.shift.division = $0.isEmpty ? nil : $0 })
-    }
-    private var siteElevationBinding: Binding<String> {
-        Binding(get: { model.siteElevationFeet.map(String.init) ?? "" },
-                set: { model.siteElevationFeet = Int($0) })
-    }
-
-    private func labeledField(_ label: String, _ placeholder: String, _ text: Binding<String>,
-                              numeric: Bool = false, decimal: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label).fieldLabel()
-            TextField(placeholder, text: text)
-                .font(BadwaterFont.body)
-                .keyboard(numeric: numeric, decimal: decimal)
-                .padding(11)
-                .frame(minHeight: Metric.tapTarget, alignment: .leading)
-                .background(BadwaterColor.surface, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(BadwaterColor.hairline))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     // MARK: - Pending capture card (M1)
 
     /// The pending observation the Log button will freeze — computed from the live
@@ -427,6 +409,7 @@ struct WatchView: View {
             }
             freshnessStrip
             ObsTimeField(time: $pendingTime)
+            futureTimeStrip
             WeatherInputGroup(model: ignition, sharedWith: "Ignition", showsDerivedHumidity: false)
             noteField
         }
@@ -453,6 +436,21 @@ struct WatchView: View {
             actionIdentifier: "mark-weather-current")
     }
 
+    /// A hand-set obs time in the future would file the reading under a
+    /// time-of-day band that hasn't happened, and make it the "latest" obs the
+    /// hero and the due countdown read from. Back-filling a *past* time is
+    /// legitimate and stays silent.
+    @ViewBuilder private var futureTimeStrip: some View {
+        if pendingTime.timeIntervalSince(now) > 60 {
+            StatusStrip(
+                icon: "clock.badge.exclamationmark",
+                message: "Obs time is ahead of the clock — this reading would be filed in the future.",
+                caution: true, actionTitle: "Use now",
+                action: { resetObsTimeToNow() },
+                identifier: "obs-time-future", actionIdentifier: "obs-time-use-now")
+        }
+    }
+
     private func freshnessText(stale: Bool, ageMinutes: Int?) -> String {
         guard let ageMinutes else { return "Weather not read yet" }
         if stale { return "Weather read \(ageMinutes) min ago — confirm current" }
@@ -475,7 +473,14 @@ struct WatchView: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Export", annotation: exportAnnotation)
             HStack(spacing: 10) {
-                Button { exportingWorkbook = true } label: { actionLabel("IMET .xlsx", "tablecells") }
+                // Build the workbook once, on the tap. The document argument is
+                // re-evaluated on every body pass, so constructing it inline
+                // re-zipped the whole multi-day .xlsx on each 30-second tick for
+                // as long as the sheet was open.
+                Button {
+                    workbookDocument = IMETWorkbookDocument(data: model.imetWorkbookData())
+                    exportingWorkbook = true
+                } label: { actionLabel("IMET .xlsx", "tablecells") }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("export-imet")
                 ShareLink(item: model.notesText()) { actionLabel("Notes table", "note.text") }
@@ -484,11 +489,20 @@ struct WatchView: View {
         }
         .fileExporter(
             isPresented: $exportingWorkbook,
-            document: exportingWorkbook ? IMETWorkbookDocument(data: model.imetWorkbookData())
-                                        : IMETWorkbookDocument(data: Data()),
+            document: workbookDocument,
             contentType: IMETWorkbookDocument.xlsx,
             defaultFilename: "BadwaterIgnition-observations"
-        ) { _ in }
+        ) { _ in workbookDocument = nil }
+    }
+
+    /// The record couldn't be written to disk. The in-memory log is intact and
+    /// still exportable, so the actionable instruction is "export now" rather
+    /// than a bare error.
+    private var persistenceWarning: some View {
+        StatusStrip(
+            icon: "externaldrive.badge.exclamationmark",
+            message: "Couldn't save the log to this device — export the spreadsheet before you quit the app.",
+            caution: true, identifier: "persistence-warning")
     }
 
     /// Export header annotation — surfaces the multi-day span once more than one
@@ -590,7 +604,7 @@ struct WatchView: View {
                                 isPresented: $confirmNewShift, titleVisibility: .visible) {
                 Button("Start new shift") {
                     model.startNewShift()
-                    pendingTime = Date()
+                    resetObsTimeToNow()
                     note = ""
                     showUndo = false
                 }
@@ -645,9 +659,14 @@ struct WatchView: View {
         return Button {
             model.logObs(at: pendingTime, wind: ignition.wind, note: note.isEmpty ? nil : note)
             note = ""
-            // Pre-fill the next hourly slot so the operator isn't re-entering the
-            // time every observation (an off-hour read can still be tap-typed).
-            pendingTime = pendingTime.addingTimeInterval(obsCadence)
+            // Hand the time back to the clock. This used to pre-fill the *next*
+            // hourly slot (`pendingTime + 1 h`), which forward-dates the reading:
+            // a second tap — a glove double-tap, a correction, a back-fill —
+            // stamped an observation in the future, and `obsDueStrip` then
+            // counted down from a `latest.timestamp` that hadn't happened yet.
+            // Announcing when the next obs is due is the due strip's job, not
+            // the timestamp's.
+            resetObsTimeToNow()
         } label: {
             HStack(spacing: 10) {
                 Text(gated ? "Confirm site to log" : "Log Observation")
@@ -684,16 +703,6 @@ struct WatchView: View {
     }
 }
 
-private extension View {
-    /// Numeric keyboards are iOS-only; on macOS this is a no-op so the shared view
-    /// compiles for both destinations.
-    @ViewBuilder func keyboard(numeric: Bool, decimal: Bool) -> some View {
-        #if os(iOS)
-        self.keyboardType(numeric ? (decimal ? .numbersAndPunctuation : .numberPad) : .default)
-        #else
-        self
-        #endif
-    }
 }
 
 /// The observation-time control: tap the value to **type** a time directly
@@ -709,7 +718,9 @@ private struct ObsTimeField: View {
             HStack(spacing: 8) {
                 TextField("HH:MM", text: $text)
                     .font(BadwaterFont.inputValue).monospacedDigit()
-                    .keyboard(numeric: true, decimal: false)
+                    // .numbersAndPunctuation, not .numberPad: the field accepts
+                    // "14:35" as well as "1435", and the number pad has no colon.
+                    .fieldKeyboard(.signedNumber)
                     .frame(maxWidth: 92)
                     .accessibilityIdentifier("obs-time-field")
                     .onChange(of: text) { _, v in

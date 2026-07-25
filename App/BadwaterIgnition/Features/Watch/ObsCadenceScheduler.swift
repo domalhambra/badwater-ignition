@@ -27,6 +27,11 @@ final class ObsCadenceScheduler {
 
     /// Abstracts `UNUserNotificationCenter` so the scheduling *decisions* are
     /// testable without a device, an entitlement, or a real notification centre.
+    ///
+    /// `@MainActor` because every conformer is: the scheduler itself is
+    /// main-actor isolated and only ever calls these from there, and a
+    /// nonisolated requirement can't be satisfied by a main-actor method.
+    @MainActor
     protocol Center {
         func requestAuthorization() async -> Bool
         func removePending(identifiers: [String])

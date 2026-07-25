@@ -35,4 +35,17 @@ enum AppEnvironment {
         suite.removePersistentDomain(forName: name)
         return suite
     }()
+
+    /// Where an App Intent wants the app to land when it opens it.
+    enum DeepLink {
+        case logObservation
+    }
+
+    /// Set by ``LogObservationIntent`` immediately before the app is brought
+    /// forward, and consumed once by ``RootView``.
+    ///
+    /// A plain main-actor global rather than a notification or a URL: both ends
+    /// run on the main actor in the same process, the value is read exactly once
+    /// on the next `onAppear`, and there is no state to keep in sync.
+    @MainActor static var pendingDeepLink: DeepLink?
 }

@@ -592,6 +592,7 @@ final class ObservationRecordStoreTests: XCTestCase {
 final class ObsCadenceSchedulerTests: XCTestCase {
 
     /// Records what the scheduler asked for.
+    @MainActor
     final class SpyCenter: ObsCadenceScheduler.Center {
         var granted = true
         var authorizationRequests = 0

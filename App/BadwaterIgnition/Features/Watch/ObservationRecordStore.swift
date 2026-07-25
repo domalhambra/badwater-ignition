@@ -71,6 +71,15 @@ final class ObservationRecordStore {
 
     private static func defaultDirectory() -> URL? {
         let fm = FileManager.default
+        // UI tests reset their UserDefaults suite; the record is a *file* now, so
+        // it needs the same treatment or every test inherits the previous run's
+        // shift — the exact leak `-uiTestingResetState` exists to prevent.
+        if ProcessInfo.processInfo.arguments.contains(AppEnvironment.resetStateArgument) {
+            let name = "com.badwater.ignition.uitest.record.\(ProcessInfo.processInfo.processIdentifier)"
+            let url = fm.temporaryDirectory.appendingPathComponent(name, isDirectory: true)
+            try? fm.removeItem(at: url)
+            return ensured(url)
+        }
         if let group = fm.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
             return ensured(group.appendingPathComponent("Record", isDirectory: true))
         }

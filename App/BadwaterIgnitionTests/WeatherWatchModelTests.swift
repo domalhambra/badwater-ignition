@@ -14,6 +14,34 @@ final class WeatherWatchModelTests: XCTestCase {
         return d
     }
 
+    /// Per-test-method record directory.
+    ///
+    /// The observation record moved from a per-test `UserDefaults` suite into a
+    /// file (ObservationRecordStore). Without an App Group entitlement — which CI
+    /// has not, building with CODE_SIGNING_ALLOWED=NO — that file lands in one
+    /// shared Application Support directory, so every model in every test read
+    /// and wrote the *same* shift. Keyed on `#function`, so constructions within
+    /// one test share a directory (reload-from-the-same-store tests still work)
+    /// while different tests are isolated.
+    private var recordDirectories: [String: URL] = [:]
+
+    private func recordDirectory(_ key: String) -> URL {
+        if let existing = recordDirectories[key] { return existing }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("bw-watch-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        recordDirectories[key] = url
+        return url
+    }
+
+    /// Build a model whose record is isolated to this test.
+    private func model(ignition ign: IgnitionModel, store: UserDefaults,
+                       dir key: String = #function) -> WeatherWatchModel {
+        WeatherWatchModel(
+            ignition: ign, store: store,
+            record: ObservationRecordStore(defaults: store, directory: recordDirectory(key)))
+    }
+
     private func ignition(dry: Int, rh: Int) -> IgnitionModel {
         let m = IgnitionModel(store: fresh("watch.ign.\(dry).\(rh)"))
         m.rhSource = .direct
@@ -24,7 +52,7 @@ final class WeatherWatchModelTests: XCTestCase {
     }
 
     func testLogFreezesLiveInputs() {
-        let w = WeatherWatchModel(ignition: ignition(dry: 90, rh: 8), store: fresh("watch.log"))
+        let w = model(ignition: ignition(dry: 90, rh: 8), store: fresh("watch.log"))
 
         w.logObs()
         XCTAssertEqual(w.shift.obs.count, 1)
@@ -36,16 +64,16 @@ final class WeatherWatchModelTests: XCTestCase {
     func testShiftPersistsAcrossInstances() {
         let store = fresh("watch.persist")
         let ign = ignition(dry: 85, rh: 12)
-        let a = WeatherWatchModel(ignition: ign, store: store)
+        let a = model(ignition: ign, store: store)
         a.logObs()
         a.logObs()
         // A new model on the same store restores the shift.
-        let b = WeatherWatchModel(ignition: ign, store: store)
+        let b = model(ignition: ign, store: store)
         XCTAssertEqual(b.shift.obs.count, 2)
     }
 
     func testStartNewShiftClearsObs() {
-        let w = WeatherWatchModel(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.new"))
+        let w = model(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.new"))
         w.logObs()
         w.startNewShift()
         XCTAssertTrue(w.shift.obs.isEmpty)
@@ -53,7 +81,7 @@ final class WeatherWatchModelTests: XCTestCase {
 
     func testRemoveObsDeletesAndPersists() {
         let store = fresh("watch.remove")
-        let w = WeatherWatchModel(ignition: ignition(dry: 90, rh: 8), store: store)
+        let w = model(ignition: ignition(dry: 90, rh: 8), store: store)
         let a = w.logObs()
         let b = w.logObs()
         XCTAssertEqual(w.shift.obs.count, 2)
@@ -62,7 +90,7 @@ final class WeatherWatchModelTests: XCTestCase {
         XCTAssertEqual(w.shift.obs.map(\.id), [b.id])
 
         // Delete persisted: a fresh model on the same store sees only the survivor.
-        let reloaded = WeatherWatchModel(ignition: ignition(dry: 90, rh: 8), store: store)
+        let reloaded = model(ignition: ignition(dry: 90, rh: 8), store: store)
         XCTAssertEqual(reloaded.shift.obs.count, 1)
         XCTAssertEqual(reloaded.shift.obs.first?.id, b.id)
     }
@@ -70,9 +98,9 @@ final class WeatherWatchModelTests: XCTestCase {
     func testAddresseePersistsAcrossInstances() {
         let store = fresh("watch.addressee")
         let ign = ignition(dry: 80, rh: 15)
-        let a = WeatherWatchModel(ignition: ign, store: store)
+        let a = model(ignition: ign, store: store)
         a.addressee = "Diamond Mountain"
-        let b = WeatherWatchModel(ignition: ign, store: store)
+        let b = model(ignition: ign, store: store)
         XCTAssertEqual(b.addressee, "Diamond Mountain")
     }
 
@@ -82,7 +110,7 @@ final class WeatherWatchModelTests: XCTestCase {
         ign.dryBulbF = 80
         ign.wetBulbF = 65
         ign.elevationBand = .band1                 // stale band left on the Ignition tab
-        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.siteelev"))
+        let w = model(ignition: ign, store: fresh("watch.siteelev"))
 
         // No site elevation yet → falls back to the Ignition tab's band.
         XCTAssertEqual(w.pendingObs().humidity?.elevationBand, .band1)
@@ -104,16 +132,16 @@ final class WeatherWatchModelTests: XCTestCase {
     func testSiteElevationPersistsAndClears() {
         let store = fresh("watch.siteelev.persist")
         let ign = ignition(dry: 80, rh: 15)
-        let a = WeatherWatchModel(ignition: ign, store: store)
+        let a = model(ignition: ign, store: store)
         a.siteElevationFeet = 7200
-        XCTAssertEqual(WeatherWatchModel(ignition: ign, store: store).siteElevationFeet, 7200)
+        XCTAssertEqual(model(ignition: ign, store: store).siteElevationFeet, 7200)
         // Clearing removes the key (a fresh model reads it back as nil, not 0).
         a.siteElevationFeet = nil
-        XCTAssertNil(WeatherWatchModel(ignition: ign, store: store).siteElevationFeet)
+        XCTAssertNil(model(ignition: ign, store: store).siteElevationFeet)
     }
 
     func testLatestFollowsTimestampNotAppendOrder() {
-        let w = WeatherWatchModel(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.latest"))
+        let w = model(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.latest"))
         let t0 = Date(timeIntervalSince1970: 0)
         let later = w.logObs(at: t0.addingTimeInterval(3600))   // 0100
         _ = w.logObs(at: t0)                                    // 0000, back-filled AFTER
@@ -122,7 +150,7 @@ final class WeatherWatchModelTests: XCTestCase {
 
     func testBackfilledObsFreezesAgainstChronologicalPredecessor() {
         let ign = ignition(dry: 60, rh: 25)
-        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.prev"))
+        let w = model(ignition: ign, store: fresh("watch.prev"))
         w.addressee = "Diamond Mountain"
         let t0 = Date(timeIntervalSince1970: 0)
 
@@ -140,7 +168,7 @@ final class WeatherWatchModelTests: XCTestCase {
 
     func testFrozenBroadcastSurvivesEditsDeletesAndAddresseeChange() {
         let ign = ignition(dry: 60, rh: 25)
-        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.frozen"))
+        let w = model(ignition: ign, store: fresh("watch.frozen"))
         w.addressee = "Diamond Mountain"
         let t0 = Date(timeIntervalSince1970: 0)
 
@@ -159,7 +187,7 @@ final class WeatherWatchModelTests: XCTestCase {
     }
 
     func testSuppressLocationAtLogTime() {
-        let w = WeatherWatchModel(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.suppress"))
+        let w = model(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.suppress"))
         w.setShiftHeader(division: nil, locationName: "near the 659 road")
         // Even the first obs of a shift stays silent when the operator asserts
         // "location unchanged" explicitly.
@@ -169,7 +197,7 @@ final class WeatherWatchModelTests: XCTestCase {
 
     func testLocationTextEditReannounces() {
         let ign = ignition(dry: 80, rh: 15)
-        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.locmove"))
+        let w = model(ignition: ign, store: fresh("watch.locmove"))
         w.setShiftHeader(division: nil, locationName: "near the 659 road")
         let t0 = Date(timeIntervalSince1970: 0)
         _ = w.logObs(at: t0)
@@ -186,7 +214,7 @@ final class WeatherWatchModelTests: XCTestCase {
     func testSiteCoordinateFoldsIntoLogAndPersists() {
         let store = fresh("watch.coord")
         let ign = ignition(dry: 80, rh: 15)
-        let w = WeatherWatchModel(ignition: ign, store: store)
+        let w = model(ignition: ign, store: store)
         w.siteCoordinate = GeoPoint(latitude: 38.21437, longitude: -112.3978)
         // The sticky decimal lat/long lands on the logged obs (spreadsheet column J).
         XCTAssertEqual(w.logObs().location?.rendered, "38.21437, -112.3978")
@@ -194,14 +222,14 @@ final class WeatherWatchModelTests: XCTestCase {
         let explicit = GeoPoint(latitude: 38.5, longitude: -112.5)
         XCTAssertEqual(w.logObs(location: explicit).location, explicit)
         // Persists across instances; clearing removes the key.
-        XCTAssertEqual(WeatherWatchModel(ignition: ign, store: store).siteCoordinate?.rendered,
+        XCTAssertEqual(model(ignition: ign, store: store).siteCoordinate?.rendered,
                        "38.21437, -112.3978")
         w.siteCoordinate = nil
-        XCTAssertNil(WeatherWatchModel(ignition: ign, store: store).siteCoordinate)
+        XCTAssertNil(model(ignition: ign, store: store).siteCoordinate)
     }
 
     func testNoteTrimsAndFolds() {
-        let w = WeatherWatchModel(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.note"))
+        let w = model(ignition: ignition(dry: 80, rh: 15), store: fresh("watch.note"))
         XCTAssertEqual(w.logObs(note: "  sun on thermometer  ").note, "sun on thermometer")
         XCTAssertNil(w.logObs(note: "   ").note)
         XCTAssertNil(w.logObs().note)
@@ -210,20 +238,20 @@ final class WeatherWatchModelTests: XCTestCase {
     func testSiteConfirmationLifecycle() {
         let store = fresh("watch.confirm")
         let ign = ignition(dry: 80, rh: 15)
-        let w = WeatherWatchModel(ignition: ign, store: store)
+        let w = model(ignition: ign, store: store)
         XCTAssertTrue(w.needsSiteConfirmation)          // fresh shift: gate is up
         w.confirmSite()
         XCTAssertFalse(w.needsSiteConfirmation)
         // Confirmation persists across instances…
-        XCTAssertFalse(WeatherWatchModel(ignition: ign, store: store).needsSiteConfirmation)
+        XCTAssertFalse(model(ignition: ign, store: store).needsSiteConfirmation)
         // …and a new shift demands a fresh review.
         w.startNewShift()
         XCTAssertTrue(w.needsSiteConfirmation)
-        XCTAssertTrue(WeatherWatchModel(ignition: ign, store: store).needsSiteConfirmation)
+        XCTAssertTrue(model(ignition: ign, store: store).needsSiteConfirmation)
     }
 
     func testUndoRestoresDeletedObs() {
-        let w = WeatherWatchModel(ignition: ignition(dry: 90, rh: 8), store: fresh("watch.undo"))
+        let w = model(ignition: ignition(dry: 90, rh: 8), store: fresh("watch.undo"))
         let t0 = Date(timeIntervalSince1970: 0)
         let a = w.logObs(at: t0)
         _ = w.logObs(at: t0.addingTimeInterval(3600))
@@ -242,7 +270,7 @@ final class WeatherWatchModelTests: XCTestCase {
     func testUndoWalksBackThroughMultipleDeletions() {
         let store = fresh("undostack")
         let ign = IgnitionModel(store: store)
-        let w = WeatherWatchModel(ignition: ign, store: store)
+        let w = model(ignition: ign, store: store)
         let a = w.logObs(at: Date(timeIntervalSince1970: 1_000))
         let b = w.logObs(at: Date(timeIntervalSince1970: 2_000))
         XCTAssertEqual(w.shift.obs.count, 2)
@@ -264,7 +292,7 @@ final class WeatherWatchModelTests: XCTestCase {
     func testUndoStackIsBounded() {
         let store = fresh("undobound")
         let ign = IgnitionModel(store: store)
-        let w = WeatherWatchModel(ignition: ign, store: store)
+        let w = model(ignition: ign, store: store)
         let logged = (0..<(WeatherWatchModel.undoDepth + 3)).map {
             w.logObs(at: Date(timeIntervalSince1970: Double(1_000 + $0)))
         }
@@ -277,7 +305,7 @@ final class WeatherWatchModelTests: XCTestCase {
     func testStartingANewShiftClearsTheUndoStack() {
         let store = fresh("undoshift")
         let ign = IgnitionModel(store: store)
-        let w = WeatherWatchModel(ignition: ign, store: store)
+        let w = model(ignition: ign, store: store)
         let a = w.logObs(at: Date(timeIntervalSince1970: 1_000))
         w.removeObs(id: a.id)
         XCTAssertEqual(w.undoableRemovalCount, 1)
@@ -289,7 +317,7 @@ final class WeatherWatchModelTests: XCTestCase {
 
     func testWeatherStalenessWarning() {
         let ign = ignition(dry: 80, rh: 15)   // helper edits inputs -> stamps weatherEditedAt
-        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.stale"))
+        let w = model(ignition: ign, store: fresh("watch.stale"))
         XCTAssertFalse(w.isPendingWeatherStale())       // just edited
         let inFiveHours = Date().addingTimeInterval(5 * 3600)
         XCTAssertTrue(w.isPendingWeatherStale(at: inFiveHours))
@@ -303,7 +331,7 @@ final class WeatherWatchModelTests: XCTestCase {
         // An obs persisted before broadcastText existed (simulated by appending
         // a pendingObs directly) falls back to live rendering.
         let ign = ignition(dry: 60, rh: 25)
-        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.prefeature"))
+        let w = model(ignition: ign, store: fresh("watch.prefeature"))
         w.addressee = "Diamond Mountain"
         let legacy = w.pendingObs(at: Date(timeIntervalSince1970: 0))
         w.shift.obs.append(legacy)                       // bypasses logObs freezing
@@ -317,7 +345,7 @@ final class WeatherWatchModelTests: XCTestCase {
         // renamed the site must NOT put the crew's CURRENT location into the
         // historical script — an unknown location degrades to aspect only.
         let ign = ignition(dry: 60, rh: 25)
-        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.prefeature2"))
+        let w = model(ignition: ign, store: fresh("watch.prefeature2"))
         w.setShiftHeader(division: nil, locationName: "near the 659 road")
         let legacy = w.pendingObs(at: Date(timeIntervalSince1970: 0))
         w.shift.obs.append(legacy)                       // logged pre-feature
@@ -331,7 +359,7 @@ final class WeatherWatchModelTests: XCTestCase {
 
     func testBroadcastScriptResolvesPreviousObs() {
         let ign = ignition(dry: 80, rh: 15)
-        let w = WeatherWatchModel(ignition: ign, store: fresh("watch.script"))
+        let w = model(ignition: ign, store: fresh("watch.script"))
         w.addressee = "Diamond Mountain"
 
         let first = w.logObs()

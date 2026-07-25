@@ -67,7 +67,10 @@ enum Metric {
 ///   right guarantee for a change whose visual result is hard to eyeball at every
 ///   size on every device.
 private struct ScaledReadout: ViewModifier {
-    @ScaledMetric(relativeTo: .body) private var size: CGFloat
+    // Declared bare: the text style is supplied by `init` via
+    // `ScaledMetric(wrappedValue:relativeTo:)`, and writing `@ScaledMetric(relativeTo:)`
+    // as an attribute here would additionally demand a `wrappedValue` argument.
+    @ScaledMetric private var size: CGFloat
     private let weight: Font.Weight
     private let minimumScale: CGFloat
 

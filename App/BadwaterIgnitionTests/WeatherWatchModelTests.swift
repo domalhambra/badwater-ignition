@@ -585,3 +585,119 @@ final class ObservationRecordStoreTests: XCTestCase {
         XCTAssertEqual(second.shift.obs.map(\.id), [logged.id])
     }
 }
+
+/// The obs-cadence reminder. Scheduling *decisions* are tested through the
+/// injected `Center` — no device, no entitlement, no real notification centre.
+@MainActor
+final class ObsCadenceSchedulerTests: XCTestCase {
+
+    /// Records what the scheduler asked for.
+    final class SpyCenter: ObsCadenceScheduler.Center {
+        var granted = true
+        var authorizationRequests = 0
+        var removed: [[String]] = []
+        var scheduled: [(id: String, title: String, body: String, delay: TimeInterval)] = []
+
+        func requestAuthorization() async -> Bool {
+            authorizationRequests += 1
+            return granted
+        }
+        func removePending(identifiers: [String]) { removed.append(identifiers) }
+        func schedule(identifier: String, title: String, body: String, after seconds: TimeInterval) {
+            scheduled.append((identifier, title, body, seconds))
+        }
+    }
+
+    private let noon = Date(timeIntervalSince1970: 1_780_000_000)
+
+    // MARK: - The timing rule
+
+    func testDelayIsAFullCadenceAfterTheLastObs() {
+        let delay = ObsCadenceScheduler.delayUntilNextObs(after: noon, now: noon)
+        XCTAssertEqual(delay ?? 0, ObsCadenceScheduler.cadence, accuracy: 0.001)
+    }
+
+    func testDelayShrinksAsTheHourElapses() {
+        let delay = ObsCadenceScheduler.delayUntilNextObs(
+            after: noon, now: noon.addingTimeInterval(20 * 60))
+        XCTAssertEqual(delay ?? 0, 40 * 60, accuracy: 0.001)
+    }
+
+    /// An already-due or overdue observation must not schedule a notification in
+    /// the past — the screen's amber "obs overdue" strip is the right surface.
+    func testOverdueObsSchedulesNothing() {
+        XCTAssertNil(ObsCadenceScheduler.delayUntilNextObs(
+            after: noon, now: noon.addingTimeInterval(ObsCadenceScheduler.cadence)))
+        XCTAssertNil(ObsCadenceScheduler.delayUntilNextObs(
+            after: noon, now: noon.addingTimeInterval(2 * ObsCadenceScheduler.cadence)))
+    }
+
+    // MARK: - Scheduling behaviour
+
+    func testReschedulingAlwaysClearsThePendingRequestFirst() async {
+        let spy = SpyCenter()
+        let s = ObsCadenceScheduler(center: spy)
+        await s.requestAuthorizationIfNeeded()
+        s.reschedule(latestObs: noon, now: noon)
+        XCTAssertEqual(spy.removed.first, [ObsCadenceScheduler.requestIdentifier])
+        XCTAssertEqual(spy.scheduled.count, 1)
+        XCTAssertEqual(spy.scheduled.first?.id, ObsCadenceScheduler.requestIdentifier)
+    }
+
+    /// A deleted last observation must clear the reminder rather than leave it
+    /// pointing at a reading that no longer exists.
+    func testEmptyShiftClearsWithoutScheduling() async {
+        let spy = SpyCenter()
+        let s = ObsCadenceScheduler(center: spy)
+        await s.requestAuthorizationIfNeeded()
+        s.reschedule(latestObs: nil, now: noon)
+        XCTAssertEqual(spy.removed.count, 1)
+        XCTAssertTrue(spy.scheduled.isEmpty)
+    }
+
+    func testNothingIsScheduledWithoutAuthorization() {
+        let spy = SpyCenter()
+        let s = ObsCadenceScheduler(center: spy)
+        s.reschedule(latestObs: noon, now: noon)   // never authorized
+        XCTAssertTrue(spy.scheduled.isEmpty)
+    }
+
+    func testAuthorizationIsAskedOnlyOnce() async {
+        let spy = SpyCenter()
+        let s = ObsCadenceScheduler(center: spy)
+        await s.requestAuthorizationIfNeeded()
+        await s.requestAuthorizationIfNeeded()
+        await s.requestAuthorizationIfNeeded()
+        XCTAssertEqual(spy.authorizationRequests, 1)
+    }
+
+    func testDeniedAuthorizationSchedulesNothing() async {
+        let spy = SpyCenter()
+        spy.granted = false
+        let s = ObsCadenceScheduler(center: spy)
+        await s.requestAuthorizationIfNeeded()
+        s.reschedule(latestObs: noon, now: noon)
+        XCTAssertTrue(spy.scheduled.isEmpty)
+    }
+
+    /// The reminder is advisory: it must never carry a computed value. A PIG on a
+    /// lock screen is a number stripped of the disclaimer, the freshness strip,
+    /// and the band-edge marker that keep it honest on the screen.
+    func testReminderTextQuotesNoComputedValue() async {
+        let spy = SpyCenter()
+        let s = ObsCadenceScheduler(center: spy)
+        await s.requestAuthorizationIfNeeded()
+        s.reschedule(latestObs: noon, now: noon)
+        let text = (spy.scheduled.first?.title ?? "") + " " + (spy.scheduled.first?.body ?? "")
+        for forbidden in ["PIG", "FFM", "%", "probability", "ignition"] {
+            XCTAssertFalse(text.localizedCaseInsensitiveContains(forbidden),
+                           "reminder text leaked a computed value: '\(forbidden)' in \(text)")
+        }
+    }
+
+    func testCancelRemovesThePendingRequest() {
+        let spy = SpyCenter()
+        ObsCadenceScheduler(center: spy).cancel()
+        XCTAssertEqual(spy.removed, [[ObsCadenceScheduler.requestIdentifier]])
+    }
+}

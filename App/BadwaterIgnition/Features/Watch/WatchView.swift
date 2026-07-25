@@ -66,6 +66,11 @@ struct WatchView: View {
     /// those feedbacks mean everywhere else on the platform.
     @State private var logHaptic = 0
     @State private var deleteHaptic = 0
+    /// Schedules the "next obs due" reminder so the cadence survives the app
+    /// being backgrounded — the on-screen countdown only works while it isn't.
+    #if canImport(UserNotifications)
+    @State private var cadence = ObsCadenceScheduler(center: SystemNotificationCenter())
+    #endif
 
     private var hasObs: Bool { !model.shift.obs.isEmpty }
     /// The trend overlays every retained day, so it's available once ≥2 obs exist
@@ -103,6 +108,7 @@ struct WatchView: View {
             ObsEditSheet(original: obs) { time, dry, rh, wet, wind, editedNote in
                 model.updateObs(id: obs.id, timestamp: time, dryBulbF: dry,
                                 relativeHumidity: rh, wetBulbF: wet, wind: wind, note: editedNote)
+                rescheduleCadence()
             }
         }
         .background(BadwaterColor.background)
@@ -119,6 +125,15 @@ struct WatchView: View {
         .onAppear { tick() }
         .sensoryFeedback(.success, trigger: logHaptic)
         .sensoryFeedback(.warning, trigger: deleteHaptic)
+    }
+
+    /// Re-point the due reminder at the shift's current latest observation. A
+    /// delete, an undo, or a corrected timestamp can all move it, and a stale
+    /// reminder would fire for a reading that no longer exists.
+    private func rescheduleCadence() {
+        #if canImport(UserNotifications)
+        cadence.reschedule(latestObs: model.latest?.timestamp)
+        #endif
     }
 
     /// Advance the wall-clock reference and re-seed the pending obs time with it.
@@ -358,6 +373,7 @@ struct WatchView: View {
                     action: {
                         model.undoRemoveObs()
                         if model.undoableRemovalCount == 0 { showUndo = false }
+                        rescheduleCadence()
                     },
                     identifier: "undo-strip", actionIdentifier: "undo-remove")
             }
@@ -398,6 +414,7 @@ struct WatchView: View {
                 model.removeObs(id: obs.id)
                 deleteHaptic += 1
                 showUndo = true
+                rescheduleCadence()
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 15, weight: .semibold))
@@ -628,6 +645,10 @@ struct WatchView: View {
                     resetObsTimeToNow()
                     note = ""
                     showUndo = false
+                    // The shift is over; its pending reminder is meaningless.
+                    #if canImport(UserNotifications)
+                    cadence.cancel()
+                    #endif
                 }
                 Button("Cancel", role: .cancel) { }
             }
@@ -681,6 +702,15 @@ struct WatchView: View {
             model.logObs(at: pendingTime, wind: ignition.wind, note: note.isEmpty ? nil : note)
             logHaptic += 1
             note = ""
+            // Permission is asked here, at the point of value — the first log —
+            // rather than on a cold launch before the operator knows what the
+            // app does.
+            #if canImport(UserNotifications)
+            Task {
+                await cadence.requestAuthorizationIfNeeded()
+                cadence.reschedule(latestObs: model.latest?.timestamp)
+            }
+            #endif
             // Hand the time back to the clock. This used to pre-fill the *next*
             // hourly slot (`pendingTime + 1 h`), which forward-dates the reading:
             // a second tap — a glove double-tap, a correction, a back-fill —

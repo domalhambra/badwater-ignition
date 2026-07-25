@@ -20,6 +20,7 @@ import BadwaterCore
 /// GPS-derived elevation is therefore rounded to 100 ft by ``SiteElevation`` and
 /// checked against the band boundaries, and a fix whose uncertainty straddles one
 /// is called out for map confirmation rather than quietly trusted.
+@MainActor
 struct SiteEditor: View {
     @Bindable var model: WeatherWatchModel
 

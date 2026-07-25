@@ -8,11 +8,13 @@ import SwiftUI
 /// All three tabs share a single ``IgnitionModel`` so the weather the Obs tab
 /// freezes is the same weather the operator sees on Ignition — constructed here in
 /// `init` because one `@State` can't be initialized from another inline.
+@MainActor
 struct RootView: View {
     @State private var ignition: IgnitionModel
     @State private var humidity: HumidityModel
     @State private var watch: WeatherWatchModel
     @State private var selection: Tab = .ignition
+    @Environment(\.scenePhase) private var scenePhase
 
     enum Tab: Hashable { case ignition, humidity, watch }
 
@@ -52,6 +54,20 @@ struct RootView: View {
             .tag(Tab.watch)
         }
         .tint(BadwaterColor.accent)
+        // An App Intent can ask the app to open on the Obs tab. Consumed once,
+        // so returning to the app later doesn't re-navigate.
+        .onAppear(perform: consumePendingDeepLink)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { consumePendingDeepLink() }
+        }
+    }
+
+    private func consumePendingDeepLink() {
+        guard let link = AppEnvironment.pendingDeepLink else { return }
+        AppEnvironment.pendingDeepLink = nil
+        switch link {
+        case .logObservation: selection = .watch
+        }
     }
 }
 

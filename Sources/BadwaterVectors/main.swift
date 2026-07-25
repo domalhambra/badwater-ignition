@@ -81,15 +81,22 @@ struct WindIn {
     var json: String { "{\"low\":\(low),\"high\":\(high),\"dir\":\(jstr(dir)),\"gust\":\(gust)}" }
 }
 
-var utc: Calendar = {
-    var c = Calendar(identifier: .gregorian)
-    c.timeZone = TimeZone(identifier: "UTC")!
-    return c
-}()
+/// Fixed UTC calendar for the date-derived vectors (xlsx sheet names, radio
+/// time labels). Namespaced in an enum rather than left as a top-level `var`:
+/// under the Swift 6 language mode top-level bindings are main-actor isolated,
+/// so the nonisolated section generators below could not reference it. An
+/// immutable `Calendar` is `Sendable`, so this is safe from any isolation.
+enum UTC {
+    static let calendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }()
+}
 
 func utcDateMs(_ y: Int, _ mo: Int, _ d: Int) -> Int {
     let comps = DateComponents(year: y, month: mo, day: d)
-    return Int(utc.date(from: comps)!.timeIntervalSince1970) * 1000
+    return Int(UTC.calendar.date(from: comps)!.timeIntervalSince1970) * 1000
 }
 
 // MARK: - Observation model used by radio + xlsx cases (the web's logged-obs shape)
@@ -476,7 +483,7 @@ func xlsxCases() -> String {
     ]
     let rows = cases.map { (name, shifts, lat, lon) -> String in
         let location: GeoPoint? = (lat.isEmpty || lon.isEmpty) ? nil : GeoPoint(latitude: Double(lat)!, longitude: Double(lon)!)
-        let data = IMETWorkbook.build(from: shifts.map { $0.core(location: location) }, calendar: utc)
+        let data = IMETWorkbook.build(from: shifts.map { $0.core(location: location) }, calendar: UTC.calendar)
         return "{\"name\":\(jstr(name)),\"coordLat\":\(jstr(lat)),\"coordLon\":\(jstr(lon)),\"shifts\":["
             + shifts.map { $0.json() }.joined(separator: ",")
             + "],\"b64\":\(jstr(data.base64EncodedString()))}"

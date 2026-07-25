@@ -10,6 +10,7 @@ import BadwaterCore
 /// timestamp, deriving month + time-of-day from the wall clock so the record and
 /// the trend can't be biased by a stale band left on the Ignition tab. The current
 /// shift persists across launches; all compute is local & offline.
+@MainActor
 @Observable
 final class WeatherWatchModel {
     /// The current shift's logged observations.
@@ -50,9 +51,27 @@ final class WeatherWatchModel {
     /// screen gates the first log of a shift on this, so the persisted aspect
     /// default can never silently feed a broadcast (red-team #9).
     private(set) var siteConfirmedAt: Date? { didSet { persistSiteConfirmed() } }
-    /// The most recently deleted obs, held (in memory only) for an undo toast —
-    /// a glove mis-tap must not silently erase part of the record (red-team #7).
-    private(set) var lastRemovedObs: WeatherObs?
+    /// Recently deleted observations, newest last, held in memory only for the
+    /// undo affordance — a glove mis-tap must not silently erase part of the
+    /// record (red-team #7).
+    ///
+    /// A **stack**, not a single slot. It used to be one `lastRemovedObs`, which
+    /// a second delete overwrote while the undo strip still read "Observation
+    /// removed" — so the first deletion became unrecoverable with nothing on
+    /// screen saying so. Bounded, because this is a safety net for mis-taps, not
+    /// a history feature.
+    private(set) var removedObsStack: [WeatherObs] = []
+
+    /// How many deletions can be undone.
+    static let undoDepth = 10
+
+    /// The deletion a single undo would restore, or `nil` when there's nothing
+    /// to undo.
+    var lastRemovedObs: WeatherObs? { removedObsStack.last }
+
+    /// How many deletions are still recoverable — shown on the undo affordance
+    /// so a second delete doesn't hide the first.
+    var undoableRemovalCount: Int { removedObsStack.count }
     /// True once any attempt to write the observation record to disk has failed.
     /// The in-memory log is still intact and still exportable — this exists so
     /// the screen can say "export before you relaunch" instead of the record
@@ -62,12 +81,18 @@ final class WeatherWatchModel {
 
     private let ignition: IgnitionModel
     private let store: UserDefaults
+    /// File-backed storage for the observation record. The small scalar
+    /// preferences below stay in `UserDefaults`, which is what it's for.
+    private let record: ObservationRecordStore
 
-    init(ignition: IgnitionModel, store: UserDefaults = .standard, now: Date = Date()) {
+    init(ignition: IgnitionModel, store: UserDefaults = .standard, now: Date = Date(),
+         record: ObservationRecordStore? = nil) {
         self.ignition = ignition
         self.store = store
-        self.shift = Self.decode(Shift.self, from: store.data(forKey: Keys.shift)) ?? Shift(started: now)
-        self.history = Self.decode([Shift].self, from: store.data(forKey: Keys.history)) ?? []
+        let record = record ?? ObservationRecordStore(defaults: store)
+        self.record = record
+        self.shift = record.loadShift() ?? Shift(started: now)
+        self.history = record.loadHistory()
         self.addressee = store.string(forKey: Keys.addressee) ?? ""
         self.siteElevationFeet = store.object(forKey: Keys.siteElevation) as? Int
         self.siteCoordinate = Self.decode(GeoPoint.self, from: store.data(forKey: Keys.siteCoordinate))
@@ -288,6 +313,9 @@ final class WeatherWatchModel {
         shift = Shift(started: now)
         // A new shift means a fresh site review before the first broadcast.
         siteConfirmedAt = nil
+        // Undo can't reach across a shift boundary: restoring here would append a
+        // previous shift's observation into the new one.
+        removedObsStack.removeAll()
     }
 
     /// Every retained shift plus the current one — the source for the multi-day
@@ -314,19 +342,22 @@ final class WeatherWatchModel {
     }
 
     /// Delete a mis-entered observation. The shift re-persists via `didSet`, and
-    /// the removed obs is retained for ``undoRemoveObs()`` so the view can offer
-    /// an undo toast.
+    /// the removed obs is pushed onto the undo stack so the view can offer to
+    /// restore it — including after a second delete.
     func removeObs(id: UUID) {
-        if let removed = shift.obs.first(where: { $0.id == id }) { lastRemovedObs = removed }
+        if let removed = shift.obs.first(where: { $0.id == id }) {
+            removedObsStack.append(removed)
+            if removedObsStack.count > Self.undoDepth { removedObsStack.removeFirst() }
+        }
         shift.obs.removeAll { $0.id == id }
     }
 
     /// Restore the most recently deleted obs. Position doesn't matter — every
     /// live read is timestamp-ordered, so a plain append lands it correctly.
+    /// Repeated calls walk back through the stack.
     @discardableResult
     func undoRemoveObs() -> WeatherObs? {
-        guard let removed = lastRemovedObs else { return nil }
-        lastRemovedObs = nil
+        guard let removed = removedObsStack.popLast() else { return nil }
         shift.obs.append(removed)
         return removed
     }
@@ -451,8 +482,12 @@ final class WeatherWatchModel {
         }
     }
 
-    private func persistShift() { persistEncoded(shift, forKey: Keys.shift) }
-    private func persistHistory() { persistEncoded(history, forKey: Keys.history) }
+    private func persistShift() {
+        if !record.saveShift(shift) { persistenceFailed = true }
+    }
+    private func persistHistory() {
+        if !record.saveHistory(history) { persistenceFailed = true }
+    }
     private func persistAddressee() { store.set(addressee, forKey: Keys.addressee) }
     private func persistSiteSource() { store.set(siteSource.rawValue, forKey: Keys.siteSource) }
     private func persistSiteFixedAt() {
@@ -479,8 +514,11 @@ final class WeatherWatchModel {
     }
 
     private enum Keys {
-        static let shift = "watch.shift"
-        static let history = "watch.history"
+        // The record itself now lives in files (ObservationRecordStore). These
+        // legacy keys are still READ once, to migrate, and deliberately left in
+        // place for a release so a rollback still finds the record.
+        static let shift = ObservationRecordStore.LegacyKeys.shift
+        static let history = ObservationRecordStore.LegacyKeys.history
         static let addressee = "watch.addressee"
         static let siteElevation = "watch.siteElevationFeet"
         static let siteCoordinate = "watch.siteCoordinate"

@@ -8,6 +8,7 @@ import BadwaterCore
 /// psychrometer or belt weather kit, plus the elevation band (which sets the
 /// station pressure) and an Alaska toggle for the shifted thresholds. The result
 /// updates live and can be chained into the Ignition screen.
+@MainActor
 @Observable
 final class HumidityModel {
     var dryBulbF: Int { didSet { clampWet(); persist() } }

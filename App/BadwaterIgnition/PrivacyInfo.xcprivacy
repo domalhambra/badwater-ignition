@@ -15,7 +15,16 @@
          defines "collected" as transmitted off-device for developer access,
          which this is not. If the app ever gains a network feature that sends a
          position anywhere, this array must gain
-         NSPrivacyCollectedDataTypePreciseLocation. -->
+         NSPrivacyCollectedDataTypePreciseLocation.
+
+         Device backups: to be precise rather than merely reassuring — the
+         observation log, including any GPS coordinates on it, IS included in
+         iCloud and encrypted local backups, like any app's stored data. That is
+         ordinary iOS behaviour and is not collection by the developer, but it is
+         a weaker claim than "the data never leaves the phone", so say the
+         accurate one. The log is deliberately NOT marked
+         isExcludedFromBackup: losing a shift record to a phone replacement is a
+         worse outcome for a crew than the record existing in their own backup. -->
     <key>NSPrivacyTracking</key>
     <false/>
     <key>NSPrivacyTrackingDomains</key>

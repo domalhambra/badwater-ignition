@@ -10,8 +10,59 @@ import Foundation
 /// this for large binary parts.
 public enum ZipArchive {
 
+    /// Limits of the classic (non-Zip64) format this writer emits. A ZIP header
+    /// stores a name length in 16 bits and a size/offset in 32, so exceeding
+    /// either can't be represented — and the conversions below would *trap*
+    /// rather than fail. Both are far beyond a spreadsheet of shift
+    /// observations; they exist so a future caller gets a diagnosable error
+    /// instead of a crash on a fireline.
+    public enum Limit {
+        public static let maxEntryNameBytes = Int(UInt16.max)
+        public static let maxEntryBytes = Int(UInt32.max)
+        public static let maxEntryCount = Int(UInt16.max)
+    }
+
+    /// Why a ZIP could not be written.
+    public enum Failure: Error, Equatable {
+        case entryNameTooLong(path: String, bytes: Int)
+        case entryTooLarge(path: String, bytes: Int)
+        case tooManyEntries(count: Int)
+    }
+
     /// Package entries (path → bytes) into a ZIP container.
+    ///
+    /// Preconditions are checked rather than trusted: see ``Limit``. Use
+    /// ``zipChecked(_:)`` to handle a violation instead of trapping.
     public static func zip(_ entries: [(path: String, data: Data)]) -> Data {
+        // The archive this app builds is a few kilobytes of sheet XML with short
+        // fixed paths, so a violation here is a programming error, not a runtime
+        // condition — hence the trap, with a message that says which entry.
+        do {
+            return try zipChecked(entries)
+        } catch {
+            preconditionFailure("ZipArchive.zip: \(error)")
+        }
+    }
+
+    /// Package entries into a ZIP container, throwing rather than trapping when
+    /// an entry exceeds what the classic ZIP format can encode.
+    public static func zipChecked(_ entries: [(path: String, data: Data)]) throws -> Data {
+        guard entries.count <= Limit.maxEntryCount else {
+            throw Failure.tooManyEntries(count: entries.count)
+        }
+        for entry in entries {
+            let nameBytes = entry.path.utf8.count
+            guard nameBytes <= Limit.maxEntryNameBytes else {
+                throw Failure.entryNameTooLong(path: entry.path, bytes: nameBytes)
+            }
+            guard entry.data.count <= Limit.maxEntryBytes else {
+                throw Failure.entryTooLarge(path: entry.path, bytes: entry.data.count)
+            }
+        }
+        return build(entries)
+    }
+
+    private static func build(_ entries: [(path: String, data: Data)]) -> Data {
         var out = Data()
         var central = Data()
         let dosTime: UInt16 = 0x0000

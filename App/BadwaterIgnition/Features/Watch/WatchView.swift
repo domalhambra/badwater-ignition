@@ -15,6 +15,7 @@ import AppKit
 /// so it mirrors the Ignition tab), and the shift exports (IMET `.xlsx`, NWS
 /// spot, Notes). The first log of a shift is gated on an explicit site review, so
 /// a persisted default can never silently feed a broadcast.
+@MainActor
 struct WatchView: View {
     @Bindable var model: WeatherWatchModel
     @Bindable var ignition: IgnitionModel
@@ -58,6 +59,18 @@ struct WatchView: View {
     private let obsCadence: TimeInterval = 60 * 60
     /// Which metric the shift trend plots.
     @State private var trendMetric: ObservationMetric = .probabilityOfIgnitionUnshaded
+    /// Haptic triggers. A gloved tap on a phone held at arm's length gives no
+    /// tactile confirmation of its own, and the operator is usually looking at
+    /// the weather rather than the screen — so a log and a delete each announce
+    /// themselves. `.success` for a log, `.warning` for a deletion, matching what
+    /// those feedbacks mean everywhere else on the platform.
+    @State private var logHaptic = 0
+    @State private var deleteHaptic = 0
+    /// Schedules the "next obs due" reminder so the cadence survives the app
+    /// being backgrounded — the on-screen countdown only works while it isn't.
+    #if canImport(UserNotifications)
+    @State private var cadence = ObsCadenceScheduler(center: SystemNotificationCenter())
+    #endif
 
     private var hasObs: Bool { !model.shift.obs.isEmpty }
     /// The trend overlays every retained day, so it's available once ≥2 obs exist
@@ -95,6 +108,7 @@ struct WatchView: View {
             ObsEditSheet(original: obs) { time, dry, rh, wet, wind, editedNote in
                 model.updateObs(id: obs.id, timestamp: time, dryBulbF: dry,
                                 relativeHumidity: rh, wetBulbF: wet, wind: wind, note: editedNote)
+                rescheduleCadence()
             }
         }
         .background(BadwaterColor.background)
@@ -109,6 +123,17 @@ struct WatchView: View {
         }
         .onChange(of: scenePhase) { _, phase in if phase == .active { tick() } }
         .onAppear { tick() }
+        .sensoryFeedback(.success, trigger: logHaptic)
+        .sensoryFeedback(.warning, trigger: deleteHaptic)
+    }
+
+    /// Re-point the due reminder at the shift's current latest observation. A
+    /// delete, an undo, or a corrected timestamp can all move it, and a stale
+    /// reminder would fire for a reading that no longer exists.
+    private func rescheduleCadence() {
+        #if canImport(UserNotifications)
+        cadence.reschedule(latestObs: model.latest?.timestamp)
+        #endif
     }
 
     /// Advance the wall-clock reference and re-seed the pending obs time with it.
@@ -205,7 +230,7 @@ struct WatchView: View {
         return VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(obs.timeLabel())
-                    .font(BadwaterFont.readout(24))
+                    .readout(24)
                     .foregroundStyle(BadwaterColor.ink)
                 Text("Latest").fieldLabel()
                 Spacer()
@@ -335,11 +360,22 @@ struct WatchView: View {
         let ordered = model.shift.obs.sorted { $0.timestamp > $1.timestamp }
         return VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Shift log", annotation: "\(model.shift.obs.count) obs")
-            if showUndo, model.lastRemovedObs != nil {
-                StatusStrip(icon: "arrow.uturn.backward", message: "Observation removed",
-                            caution: true, actionTitle: "Undo",
-                            action: { model.undoRemoveObs(); showUndo = false },
-                            identifier: "undo-strip", actionIdentifier: "undo-remove")
+            if showUndo, model.undoableRemovalCount > 0 {
+                // The count is shown so a second delete can't hide the first: the
+                // strip used to read "Observation removed" while silently holding
+                // only the most recent one.
+                StatusStrip(
+                    icon: "arrow.uturn.backward",
+                    message: model.undoableRemovalCount == 1
+                        ? "Observation removed"
+                        : "\(model.undoableRemovalCount) observations removed",
+                    caution: true, actionTitle: "Undo",
+                    action: {
+                        model.undoRemoveObs()
+                        if model.undoableRemovalCount == 0 { showUndo = false }
+                        rescheduleCadence()
+                    },
+                    identifier: "undo-strip", actionIdentifier: "undo-remove")
             }
             ForEach(ordered) { obs in logRow(obs) }
         }
@@ -349,7 +385,7 @@ struct WatchView: View {
         let e = obs.estimate
         return HStack(spacing: 12) {
             Text(obs.timeLabel())
-                .font(BadwaterFont.readout(17)).monospacedDigit()
+                .readout(17)
                 .foregroundStyle(BadwaterColor.ink)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -376,7 +412,9 @@ struct WatchView: View {
             .accessibilityLabel("Edit \(obs.timeLabel()) observation")
             Button(role: .destructive) {
                 model.removeObs(id: obs.id)
+                deleteHaptic += 1
                 showUndo = true
+                rescheduleCadence()
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 15, weight: .semibold))
@@ -553,7 +591,7 @@ struct WatchView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(dayLabel(shift))
-                    .font(BadwaterFont.readout(16)).foregroundStyle(BadwaterColor.ink)
+                    .readout(16).foregroundStyle(BadwaterColor.ink)
                 Text(archivedSubtitle(shift))
                     .font(BadwaterFont.labelSmall).foregroundStyle(BadwaterColor.muted).lineLimit(1)
             }
@@ -607,6 +645,10 @@ struct WatchView: View {
                     resetObsTimeToNow()
                     note = ""
                     showUndo = false
+                    // The shift is over; its pending reminder is meaningless.
+                    #if canImport(UserNotifications)
+                    cadence.cancel()
+                    #endif
                 }
                 Button("Cancel", role: .cancel) { }
             }
@@ -658,7 +700,17 @@ struct WatchView: View {
         let gated = model.needsSiteConfirmation
         return Button {
             model.logObs(at: pendingTime, wind: ignition.wind, note: note.isEmpty ? nil : note)
+            logHaptic += 1
             note = ""
+            // Permission is asked here, at the point of value — the first log —
+            // rather than on a cold launch before the operator knows what the
+            // app does.
+            #if canImport(UserNotifications)
+            Task {
+                await cadence.requestAuthorizationIfNeeded()
+                cadence.reschedule(latestObs: model.latest?.timestamp)
+            }
+            #endif
             // Hand the time back to the clock. This used to pre-fill the *next*
             // hourly slot (`pendingTime + 1 h`), which forward-dates the reading:
             // a second tap — a glove double-tap, a correction, a back-fill —
@@ -706,6 +758,7 @@ struct WatchView: View {
 /// The observation-time control: tap the value to **type** a time directly
 /// ("1435" or "14:35"), or nudge it ±5 minutes. Two-way bound to the pending-obs
 /// timestamp, so typing, nudging, and the reset-to-now after a log all agree.
+@MainActor
 private struct ObsTimeField: View {
     @Binding var time: Date
     @State private var text = ""
@@ -715,7 +768,7 @@ private struct ObsTimeField: View {
             Text("Obs time").fieldLabel()
             HStack(spacing: 8) {
                 TextField("HH:MM", text: $text)
-                    .font(BadwaterFont.inputValue).monospacedDigit()
+                    .readout(32, weight: .bold)
                     // .numbersAndPunctuation, not .numberPad: the field accepts
                     // "14:35" as well as "1435", and the number pad has no colon.
                     .fieldKeyboard(.signedNumber)
@@ -799,6 +852,7 @@ private func shiftingMinutes(_ base: Date, _ minutes: Int) -> Date {
 /// never touches the live Ignition tab or the pending obs. `rhSource` is fixed to
 /// how the reading was taken: a slung obs edits its wet bulb (RH / dew point
 /// re-derive against the obs's own band); a direct obs edits RH.
+@MainActor
 private struct ObsEditSheet: View {
     let original: WeatherObs
     /// Commits the corrected fields; the parent calls `model.updateObs`, which
@@ -838,6 +892,22 @@ private struct ObsEditSheet: View {
 
     private var isSlung: Bool { original.rhSource == .wetBulb }
 
+    /// A corrected timestamp in the future would re-file the reading under an
+    /// IRPG time-of-day band that hasn't happened, and make it the "latest" obs
+    /// the hero and the due countdown read from — the same hazard the capture
+    /// card guards, which this sheet previously did not. Correcting a reading
+    /// *backwards* is the normal case and stays silent.
+    @ViewBuilder private var editFutureTimeStrip: some View {
+        if time.timeIntervalSinceNow > 60 {
+            StatusStrip(
+                icon: "clock.badge.exclamationmark",
+                message: "That time is ahead of the clock — this reading would be filed in the future.",
+                caution: true, actionTitle: "Use now",
+                action: { time = Date() },
+                identifier: "edit-time-future", actionIdentifier: "edit-time-use-now")
+        }
+    }
+
     /// Rebuild the edited wind, mirroring `IgnitionModel.wind` (no high speed ⇒
     /// light/variable, still carrying any gust) — but preserve "not recorded"
     /// (`nil`) for an obs that never had wind and still has none entered, so a
@@ -860,6 +930,7 @@ private struct ObsEditSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     ObsTimeField(time: $time)
+                    editFutureTimeStrip
 
                     HStack(spacing: 10) {
                         StepperCard(label: "Dry bulb", unit: "°F", value: $dryBulb, range: 10...130)
@@ -916,6 +987,7 @@ private struct ObsEditSheet: View {
 
 /// Copy text to the system pasteboard — the inset "Copy" pill on the broadcast
 /// panel. Platform-guarded so the view compiles for iOS and macOS.
+@MainActor
 private func copyToPasteboard(_ text: String) {
     #if canImport(UIKit)
     UIPasteboard.general.string = text

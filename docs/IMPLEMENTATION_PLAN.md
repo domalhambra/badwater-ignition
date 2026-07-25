@@ -5,8 +5,47 @@ not done* (R1–R9) plus the iOS capabilities scoped out of that pass. Ordered b
 dependency first and value second, because two of these items are genuinely
 blocking for the rest and doing them late means doing some of them twice.
 
-Nothing here is started. Each item states what it changes, how it is **verified**,
-and whether it can be done in a cloud session or needs a Mac.
+Each item states what it changes, how it is **verified**, and whether it can be
+done in a cloud session or needs a Mac.
+
+## Status
+
+| Item | State |
+|---|---|
+| 1.1 Swift 6 language mode + `@MainActor` | **Done** |
+| 1.2 Record → App Group container | **Done** |
+| 2.1 Dew point clamp | **Done — finding withdrawn as wrong** |
+| 2.2 Undo stack | **Done** |
+| 2.3 Edit-sheet future timestamps | **Done** |
+| 2.4 `ZipArchive` bounds | **Done** |
+| 2.5 Lazy model construction | **Superseded** — see below |
+| 2.6 Dynamic Type on readouts | **Done** (needs a visual pass on a device) |
+| 2.7 Backup disclosure | **Done** |
+| 3.1 Haptics | **Done** |
+| 3.2 Obs cadence notifications | **Done** (delivery needs a device) |
+| 3.3 App Intents / Siri / Shortcuts | **Done** (Siri phrasing needs a device) |
+| 3.4 WidgetKit + Live Activity | **Not started** |
+| 3.5 watchOS app | **Not started** |
+
+A **Swift 6.1 toolchain became available** in the authoring environment partway
+through, so core work is now verified locally (`swift test`, vector regeneration,
+the parity harness) rather than only through CI. That is what turned 2.1 from an
+hour of Mac-only work into a five-minute proof that the finding was wrong.
+
+**2.5 is superseded.** The cost it named — `RootView.init` JSON-decoding the whole
+shift and history on every re-initialization and discarding it — was a property of
+the `UserDefaults` blobs. With 1.2 landed, construction reads two files through
+`ObservationRecordStore` and the expensive decode is gone. Re-measure before doing
+anything further; there may be nothing left to fix.
+
+**3.4 and 3.5 remain**, and they are the two largest items in this document
+(2–3 and 3–5 days). Both add new Xcode targets whose value is in behaviour that
+can only be judged on a device — a widget's refresh cadence and staleness
+presentation, a watch app's complication and `WatchConnectivity` sync. Landing
+either half-verified into a safety-relevant app is a worse trade than landing it
+later with a Mac in the loop. 1.2 has already done the hard part of the widget's
+dependency: the record is in an App Group container, so the extension can read it
+without a second migration.
 
 ---
 
@@ -139,29 +178,22 @@ migration that silently drops a shift log is worse than the problem it fixes.
 
 Independent of each other and of Phase 1. Can be done in any order, or batched.
 
-### 2.1 Dew point clamp (R6) — the only parity-touching item
+### 2.1 Dew point clamp (R6) — **done: the finding was withdrawn**
 
-**Change.** `Psychrometrics.compute` clamps RH to 100% but derives `dewPointF`
-from the unclamped vapor pressure, so a saturated reading can report a dew point
-a degree above the dry bulb.
+The premise was wrong. The dew point provably cannot exceed the dry bulb (the
+wet bulb is already clamped, saturation vapor pressure is monotonic, and the
+subtracted psychrometer term is non-negative), verified by sweeping the whole
+10–130 °F input space across all six bands: maximum excess is exactly zero.
 
-**Precise blast radius** (checked, not estimated):
-- `Sources/BadwaterCore/Psychrometrics/RelativeHumidity.swift` — the clamp.
-- `conformance/vectors.json` — `psychroCases()` emits `dewPointF`, and the
-  generator includes `(70, 75, 3)` explicitly labelled *"wet > dry clamps to
-  saturation"*. Vectors **will** move. Regenerate with
-  `swift run badwater-vectors --out conformance/vectors.json`; never hand-edit.
-- `web/engine.js` — `psychro()`, the `dewC` line. One line.
-- `web/sw.js` — bump `CACHE`, because a cached web asset changed.
+What was actually wrong was the test's `dry + 1` tolerance, which made the
+invariant look uncertain. Tightened to assert exactly, over the full range and
+every band. No clamp added — an unreachable one would mask a future break in the
+wet-bulb clamp rather than let the test catch it.
 
-**Why it's called out separately.** It is the only item here that crosses the
-parity boundary, so it wants to be **one small deliberate PR**, not a drive-by
-inside a larger change. `docs/PARITY.md` already spells out the discipline.
-
-**Verification.** `swift test`, vectors freshness check, `node conformance/check-web.js`.
-**Size.** An hour, most of it care. **Risk.** Low, contained.
-**Environment.** **Needs a Swift toolchain** — vectors cannot be regenerated
-without one, and CI will (correctly) reject a stale `vectors.json`.
+Consequences for this plan: **vectors did not move**, `web/engine.js` needed no
+port, and no service-worker cache bump was required. The item that was sized at
+"an hour, needs a Mac" cost a test edit and no parity work at all. See
+`RED_TEAM.md` R6 for the full argument.
 
 ### 2.2 Undo stack for deleted observations (R3)
 

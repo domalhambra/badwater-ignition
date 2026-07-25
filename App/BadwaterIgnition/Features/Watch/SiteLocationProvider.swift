@@ -113,13 +113,6 @@ final class SiteLocationProvider {
         #endif
     }
 
-    /// Discard the current fix and its provenance — the operator has taken the
-    /// site over by hand.
-    func clearFix() {
-        lastFix = nil
-        status = .idle
-    }
-
     #if canImport(CoreLocation)
     private func authorizationSettled() {
         switch manager.authorizationStatus {

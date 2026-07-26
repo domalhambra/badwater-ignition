@@ -33,12 +33,11 @@ final class WatchSessionReceiver: NSObject {
         WCSession.default.activate()
     }
 
-    fileprivate func apply(_ context: [String: Any]) {
-        // An empty or unreadable context decodes to nil, and that is meaningful
-        // rather than a failure: it is how the phone says the shift ended or its
-        // last observation was deleted. Clear rather than keep showing a reading
-        // the phone no longer has.
-        let decoded = WatchSnapshot.from(applicationContext: context)
+    /// - Parameter decoded: `nil` when the context was empty or unreadable. That
+    ///   is meaningful rather than a failure — it is how the phone says the
+    ///   shift ended or its last observation was deleted, so the watch clears
+    ///   instead of keeping a reading the phone no longer has.
+    fileprivate func apply(_ decoded: WatchSnapshot?) {
         snapshot = decoded
         // Written to the shared container, not just held here: the complication
         // is a separate process and this file is the only way it sees anything.
@@ -49,18 +48,28 @@ final class WatchSessionReceiver: NSObject {
 }
 
 extension WatchSessionReceiver: WCSessionDelegate {
+
+    /// Both callbacks decode **here**, on the delegate's thread, and hop only the
+    /// decoded value to the main actor.
+    ///
+    /// `[String: Any]` is not `Sendable`, so under the Swift 6 language mode
+    /// passing the raw context into a `@MainActor` task is an error — "sending
+    /// 'context' risks causing data races". Decoding first is also the better
+    /// shape regardless: ``WatchSnapshot`` is a `Sendable` value type, so
+    /// nothing mutable ever crosses the isolation boundary.
     nonisolated func session(_ session: WCSession,
                              activationDidCompleteWith state: WCSessionActivationState,
                              error: Error?) {
-        // The context that was current at activation is not delivered as a
-        // didReceive callback, so read it directly or a watch that launched
-        // after the phone's last send would show nothing new.
-        let context = session.receivedApplicationContext
-        Task { @MainActor in self.apply(context) }
+        // The context current at activation is not delivered as a didReceive
+        // callback, so read it directly — otherwise a watch that launched after
+        // the phone's last send would never see it.
+        let decoded = WatchSnapshot.from(applicationContext: session.receivedApplicationContext)
+        Task { @MainActor in self.apply(decoded) }
     }
 
     nonisolated func session(_ session: WCSession,
                              didReceiveApplicationContext context: [String: Any]) {
-        Task { @MainActor in self.apply(context) }
+        let decoded = WatchSnapshot.from(applicationContext: context)
+        Task { @MainActor in self.apply(decoded) }
     }
 }

@@ -35,19 +35,11 @@ import BadwaterCore
 @MainActor
 final class ObservationRecordStore {
 
-    /// Shared container identifier. Must match the App Group entitlement.
-    static let appGroupIdentifier = "group.com.badwater.ignition"
-
     /// Legacy `UserDefaults` keys, still read for migration and still written by
     /// nothing. Kept for rollback safety.
     enum LegacyKeys {
         static let shift = "watch.shift"
         static let history = "watch.history"
-    }
-
-    private enum Filename {
-        static let shift = "shift.json"
-        static let history = "history.json"
     }
 
     private let directory: URL?
@@ -80,8 +72,10 @@ final class ObservationRecordStore {
             try? fm.removeItem(at: url)
             return ensured(url)
         }
-        if let group = fm.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) {
-            return ensured(group.appendingPathComponent("Record", isDirectory: true))
+        // Same identifier and same "Record" subdirectory the widget reads from —
+        // shared via RecordLocation so the two processes cannot drift apart.
+        if let group = RecordLocation.groupContainer() {
+            return ensured(group)
         }
         // No entitlement (CI, or a build without the group provisioned): keep the
         // record on-device in Application Support rather than losing it.
@@ -110,8 +104,8 @@ final class ObservationRecordStore {
     /// exist, so a second run is a no-op and cannot duplicate or truncate a
     /// record. The legacy keys are left untouched.
     private func migrateIfNeeded() {
-        migrate(legacyKey: LegacyKeys.shift, to: Filename.shift, as: Shift.self)
-        migrate(legacyKey: LegacyKeys.history, to: Filename.history, as: [Shift].self)
+        migrate(legacyKey: LegacyKeys.shift, to: RecordLocation.shiftFilename, as: Shift.self)
+        migrate(legacyKey: LegacyKeys.history, to: RecordLocation.historyFilename, as: [Shift].self)
     }
 
     private func migrate<T: Codable>(legacyKey: String, to filename: String, as type: T.Type) {
@@ -126,8 +120,8 @@ final class ObservationRecordStore {
 
     // MARK: - Read
 
-    func loadShift() -> Shift? { read(Shift.self, from: Filename.shift) }
-    func loadHistory() -> [Shift] { read([Shift].self, from: Filename.history) ?? [] }
+    func loadShift() -> Shift? { read(Shift.self, from: RecordLocation.shiftFilename) }
+    func loadHistory() -> [Shift] { read([Shift].self, from: RecordLocation.historyFilename) ?? [] }
 
     private func read<T: Decodable>(_ type: T.Type, from filename: String) -> T? {
         guard let url = url(filename), let data = try? Data(contentsOf: url) else { return nil }
@@ -137,10 +131,10 @@ final class ObservationRecordStore {
     // MARK: - Write
 
     @discardableResult
-    func saveShift(_ shift: Shift) -> Bool { write(shift, to: Filename.shift) }
+    func saveShift(_ shift: Shift) -> Bool { write(shift, to: RecordLocation.shiftFilename) }
 
     @discardableResult
-    func saveHistory(_ history: [Shift]) -> Bool { write(history, to: Filename.history) }
+    func saveHistory(_ history: [Shift]) -> Bool { write(history, to: RecordLocation.historyFilename) }
 
     /// Encode and write atomically.
     ///

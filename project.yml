@@ -98,13 +98,11 @@ targets:
     sources:
       - path: App/BadwaterWidget
       # RecordLocation (one definition of the container path, shared with the
-      # app) and BadwaterColor (the severity ramp).
+      # app), BadwaterColor, and BadwaterColors.xcassets — the palette lives in
+      # App/Shared precisely so this target gets it. Color(_:) resolves against
+      # the *calling* bundle, which for an extension is the extension itself, so
+      # the catalog must be compiled in here rather than inherited from the host.
       - path: App/Shared
-      # The colour assets BadwaterColor resolves by name. Color(_:) looks up in
-      # the *calling bundle*, which for an extension is the extension itself, so
-      # the catalog has to be compiled in here too rather than inherited from the
-      # host app.
-      - path: App/BadwaterIgnition/Assets.xcassets
     dependencies:
       - package: BadwaterCore
         product: BadwaterCore
@@ -116,13 +114,26 @@ targets:
         # docs/PLAN_WIDGET_AND_WATCH.md.
         com.apple.security.application-groups:
           - group.com.badwater.ignition
+    # A real Info.plist, not GENERATE_INFOPLIST_FILE.
+    #
+    # The plan specified `INFOPLIST_KEY_NSExtensionPointIdentifier`, but there is
+    # no such build setting — the INFOPLIST_KEY_* mechanism covers a fixed set of
+    # keys and `NSExtension` is not among them. The generated plist therefore had
+    # no NSExtension dictionary at all, which builds and links perfectly happily
+    # and then fails at *install* time with "Failed to create app extension
+    # placeholder" / "Invalid placeholder attributes" — a message that says
+    # nothing about the missing key. An extension point has to be declared in the
+    # plist itself.
+    info:
+      path: App/BadwaterWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Badwater Ignition
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.widget
         SWIFT_VERSION: "6.0"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Badwater Ignition
-        INFOPLIST_KEY_NSExtensionPointIdentifier: com.apple.widgetkit-extension
         TARGETED_DEVICE_FAMILY: "1,2"
         SKIP_INSTALL: YES
 

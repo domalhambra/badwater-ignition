@@ -67,6 +67,11 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 
 - **"Obs" is a feature, not the brand.** The app's three tabs are **Humidity · Ignition · Obs** (Obs = the weather-observations tab). The product is **"Badwater Ignition"** (singular, matching the native app). Never rename the "Obs" tab/feature vocabulary to "Ignition," and never re-plural the brand.
 - **Safety-relevant, decision-support only.** Not affiliated with or endorsed by the NWCG. Keep the disclaimer intact; keep every table value provenance-documented.
+- **Where a computed value may appear** (settled by design review; full reasoning in `docs/PLAN_WIDGET_AND_WATCH.md`):
+  - **Persistent, glanceable surfaces — widgets, complications, Live Activities, lock-screen notifications — show only *frozen, logged* observations**, always with time and age, and stop showing the number once it's superseded. The live estimate never reaches them.
+  - **Transient, explicitly-requested read-outs may report the live estimate** — the operator asked a second ago and hears the IRPG caveat in the same breath. This is why `CurrentIgnitionIntent` speaking a live PIG is fine and a widget showing one is not.
+  - **Freezing a reading requires the capture card.** No surface outside the app creates an observation — hence the log intent opens the app, and the watch app is read-only.
+  - The line is *not* "computed values never leave the app": the radio script, IMET `.xlsx` and NWS spot request have always carried PIG outward and are right to. The line is **volatile vs. frozen** and **persistent vs. transient**.
 - **Offline-first & private.** All compute runs on-device / in-page. No outbound requests, no data collection (see `PrivacyInfo.xcprivacy`, the CSP in `netlify.toml`). Don't add network dependencies.
 - Follows the workspace **Project Conventions** in `../CLAUDE.md` (plan before multi-step work; verification is the last step; reciprocal cross-referencing). Session work is logged to the PKM `SESSION_LOG.md` via the session-log skill, not a repo-local log.
 

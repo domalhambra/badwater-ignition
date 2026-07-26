@@ -95,20 +95,56 @@ compile establishes almost nothing about an extension or a watch app.
 
 ### Starting a fresh session
 
-Paste this:
+**All 15 tasks are written and merged** (#31, `e0aa43d`). What remains is not
+code — it is the device verification checklist at the end of this document,
+none of which has been run. Paste this:
 
-> Continue `docs/PLAN_WIDGET_AND_WATCH.md` in `domalhambra/badwater-ignition`,
-> starting at Task 2. Task 1 (`ObsGlance`) is done and merged. Read
-> `CLAUDE.md` first — the **display policy** guardrail governs every surface in
-> this plan. Work on branch `claude/firefighting-weather-calculator-refactor-mmkxgy`
-> off the latest `main`. Verify with `swift test`,
+> Finish `docs/PLAN_WIDGET_AND_WATCH.md` in `domalhambra/badwater-ignition`.
+> **All 15 tasks are already written, merged and CI-green — do not re-implement
+> any of them.** What's left is the **device verification checklist** at the end
+> of that document, which has never been run: no rendering, no Live Activity
+> lifecycle, no snapshot delivery and no complication has been seen working.
+>
+> Read `CLAUDE.md` first — the **display policy** guardrail is what every one of
+> those checks is really testing.
+>
+> Work through the checklist on a real device with a paired watch, and fix what
+> it finds. Start with the two items most likely to fail, both of which fail
+> *silently*:
+>
+> 1. Confirm `NSSupportsLiveActivities` is actually present in the **built** app
+>    bundle, not just in `project.yml`. If it isn't, `Activity.request` never
+>    starts a countdown and nothing errors.
+> 2. Confirm both App Groups are provisioned on the signing team —
+>    `group.com.badwater.ignition` (app + widget) and
+>    `group.com.badwater.ignition.watch` (watch app + complication). An
+>    unprovisioned group doesn't error either; the surface is just permanently
+>    empty, which reads like a data bug.
+>
+> Then the rest of the checklist. Tick items off in the document as they pass,
+> and record anything the device disproves — several of this plan's assumptions
+> were already wrong in ways only a real build caught.
+>
+> Work on branch `claude/firefighting-weather-calculator-refactor-mmkxgy` off the
+> latest `main`. Verify with `swift test`,
 > `swift run badwater-vectors --check conformance/vectors.json`,
 > `node conformance/check-web.js`, and `xcodegen generate && xcodebuild build`.
-> Wire CI for each new target as you create it (Task 15), not at the end.
 
 Requirements for that session: macOS with Xcode 16+, `xcodegen`, `xcbeautify`, a
-Swift 6 toolchain, and Node. A physical device (and a paired watch, for 3.5) for
-the verification checklist at the end of this document.
+Swift 6 toolchain, and Node — **plus a physical iPhone and a paired Apple Watch**,
+which is the part that actually gates this work now.
+
+### Also outstanding, not on the checklist
+
+- **No icon artwork.** The watch app's `AppIcon` set declares the watchOS slot
+  and carries no images — the same state as the iOS `AppIcon`. Both need real
+  art before submission.
+- **CI runs every job twice.** The workflow triggers on both `push` (for
+  `claude/**`) and `pull_request`, so each commit to a PR branch burns two
+  macOS runners for an identical result and roughly doubles queue time. A
+  `concurrency` group, or narrowing the `push` trigger, fixes it. Noticed while
+  driving this plan's CI; deliberately not changed here, because a CI change
+  mid-flight would have muddied the signal this work depended on.
 
 ---
 

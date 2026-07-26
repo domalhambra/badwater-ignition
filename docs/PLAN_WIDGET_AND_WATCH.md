@@ -16,6 +16,46 @@ XcodeGen · Swift 6 language mode.
 
 ---
 
+## Progress
+
+| Task | State |
+|---|---|
+| 1. `ObsGlance` in `BadwaterCore` | **Done** — 13 tests, on `main` |
+| 2. `RecordLocation` | Not started |
+| 3. Widget target | Not started |
+| 4. Timeline provider | Not started |
+| 5. Widget views | Not started |
+| 6. Reload on record mutation | Not started |
+| 7. Live Activity attributes | Not started |
+| 8. Live Activity presentation + lifecycle | Not started |
+| 9. `WatchSnapshot` | Not started |
+| 10–13. watchOS app + complication | Not started |
+| 14. Bundle-id / entitlement audit | Not started |
+| 15. CI covers the new targets | Not started — **do this with Task 3** |
+
+**Everything from Task 2 onward needs a Mac.** Task 1 was pure core and was done
+in a cloud session; every remaining task touches an Xcode target, an entitlement,
+or a device-only behaviour.
+
+### Starting a fresh session
+
+Paste this:
+
+> Continue `docs/PLAN_WIDGET_AND_WATCH.md` in `domalhambra/badwater-ignition`,
+> starting at Task 2. Task 1 (`ObsGlance`) is done and merged. Read
+> `CLAUDE.md` first — the **display policy** guardrail governs every surface in
+> this plan. Work on branch `claude/firefighting-weather-calculator-refactor-mmkxgy`
+> off the latest `main`. Verify with `swift test`,
+> `swift run badwater-vectors --check conformance/vectors.json`,
+> `node conformance/check-web.js`, and `xcodegen generate && xcodebuild build`.
+> Wire CI for each new target as you create it (Task 15), not at the end.
+
+Requirements for that session: macOS with Xcode 16+, `xcodegen`, `xcbeautify`, a
+Swift 6 toolchain, and Node. A physical device (and a paired watch, for 3.5) for
+the verification checklist at the end of this document.
+
+---
+
 ## The display policy these are built on
 
 Settled by design review before planning. It governs every surface added here and
@@ -90,7 +130,22 @@ precisely because nothing compiled them; a widget extension will do the same.
 
 ---
 
-## Task 1: `ObsGlance` — the staleness decision, in the core
+## Task 1: `ObsGlance` — the staleness decision, in the core  ✅ DONE
+
+> **Landed.** 13 tests in `Tests/BadwaterCoreTests/ObsGlanceTests.swift`; full
+> core suite 111 tests green, vectors byte-identical, 1172 parity checks green.
+> Two edges were pinned beyond the plan as written: an observation stamped ahead
+> of `now` (back-fill or clock adjustment) floors its age at zero instead of
+> rendering negative, and a test asserts that a timeline entry scheduled at
+> `nextTransition` actually lands on `.overdue` rather than one second short.
+> `at(_:latest:cadence:)` takes the display moment explicitly so a watch can pass
+> its own clock and never present a late delivery as fresh.
+>
+> `ObsGlance.standardCadence` also landed here, so Task 4's note about moving the
+> cadence constant into the core is already satisfied — Task 4 only needs to
+> point `ObsCadenceScheduler.cadence` at it.
+
+The rest of this section is kept as the record of what was specified.
 
 The widget's only safety-relevant logic. It goes in `BadwaterCore` so it is
 tested on Linux CI rather than living untested in an extension.
@@ -526,9 +581,13 @@ struct LatestObsProvider: TimelineProvider {
 }
 ```
 
-> `ObsCadenceScheduler.cadence` lives in the app target. Either move that
-> constant to `BadwaterCore` alongside `ObsGlance` (preferred — it is shared
-> domain knowledge, not app plumbing) or duplicate it with a comment. **Move it.**
+> **Resolved in Task 1.** `ObsGlance.standardCadence` is now the shared constant
+> in `BadwaterCore`. This task only needs to change `ObsCadenceScheduler.cadence`
+> to `ObsGlance.standardCadence` so the scheduler, the on-screen countdown and
+> every glanceable surface cannot drift apart. The provider code above already
+> references `ObsCadenceScheduler.cadence`; either spelling works once they are
+> the same value, but prefer `ObsGlance.standardCadence` in the extension so the
+> widget doesn't depend on an app-target type.
 
 Then, in `WatchView`, add `WidgetCenter.shared.reloadAllTimelines()` next to each
 existing `rescheduleCadence()` call so the widget follows log, edit, delete, undo

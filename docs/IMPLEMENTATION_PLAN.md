@@ -24,7 +24,7 @@ done in a cloud session or needs a Mac.
 | 3.1 Haptics | **Done** |
 | 3.2 Obs cadence notifications | **Done** (delivery needs a device) |
 | 3.3 App Intents / Siri / Shortcuts | **Done** (Siri phrasing needs a device) |
-| 3.4 WidgetKit + Live Activity | **Not started — detailed plan written**, see [`PLAN_WIDGET_AND_WATCH.md`](PLAN_WIDGET_AND_WATCH.md) |
+| 3.4 WidgetKit + Live Activity | **In progress** — Task 1 of 15 done (`ObsGlance` in the core); rest needs a Mac. See [`PLAN_WIDGET_AND_WATCH.md`](PLAN_WIDGET_AND_WATCH.md) |
 | 3.5 watchOS app | **Not started — detailed plan written**, see [`PLAN_WIDGET_AND_WATCH.md`](PLAN_WIDGET_AND_WATCH.md) |
 
 A **Swift 6.1 toolchain became available** in the authoring environment partway

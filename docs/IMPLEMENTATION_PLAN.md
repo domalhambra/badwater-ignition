@@ -24,8 +24,8 @@ done in a cloud session or needs a Mac.
 | 3.1 Haptics | **Done** |
 | 3.2 Obs cadence notifications | **Done** (delivery needs a device) |
 | 3.3 App Intents / Siri / Shortcuts | **Done** (Siri phrasing needs a device) |
-| 3.4 WidgetKit + Live Activity | **Not started** |
-| 3.5 watchOS app | **Not started** |
+| 3.4 WidgetKit + Live Activity | **In progress** — Task 1 of 15 done (`ObsGlance` in the core); rest needs a Mac. See [`PLAN_WIDGET_AND_WATCH.md`](PLAN_WIDGET_AND_WATCH.md) |
+| 3.5 watchOS app | **Not started — detailed plan written**, see [`PLAN_WIDGET_AND_WATCH.md`](PLAN_WIDGET_AND_WATCH.md) |
 
 A **Swift 6.1 toolchain became available** in the authoring environment partway
 through, so core work is now verified locally (`swift test`, vector regeneration,
@@ -37,6 +37,17 @@ shift and history on every re-initialization and discarding it — was a propert
 the `UserDefaults` blobs. With 1.2 landed, construction reads two files through
 `ObservationRecordStore` and the expensive decode is gone. Re-measure before doing
 anything further; there may be nothing left to fix.
+
+**3.4 and 3.5 now have their own task-level plan** in
+[`PLAN_WIDGET_AND_WATCH.md`](PLAN_WIDGET_AND_WATCH.md), written after a design
+review that settled the **display policy** both depend on (now recorded as a
+guardrail in `CLAUDE.md`). Two consequences changed the shape of the work:
+
+- The widget's staleness rule became a pure `ObsGlance` type in `BadwaterCore`,
+  golden-tested on Linux CI, rather than untested logic inside an extension.
+- The watch app is read-only **by policy, not by scoping** — freezing a reading
+  requires the capture card — so the two-way `WatchConnectivity` merge problem
+  that dominated the original estimate is gone entirely.
 
 **3.4 and 3.5 remain**, and they are the two largest items in this document
 (2–3 and 3–5 days). Both add new Xcode targets whose value is in behaviour that

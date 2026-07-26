@@ -83,6 +83,12 @@ struct WatchView: View {
     @State private var obsActivity = ObsActivityController()
     #endif
 
+    /// Mirrors the shift's latest observation to a paired watch. Read-only on
+    /// the far side — freezing a reading requires the capture card here.
+    #if canImport(WatchConnectivity)
+    @State private var watchSession = WatchSessionSender()
+    #endif
+
     private var hasObs: Bool { !model.shift.obs.isEmpty }
     /// The trend overlays every retained day, so it's available once ≥2 obs exist
     /// across the history and the current shift (not just the current one).
@@ -171,6 +177,11 @@ struct WatchView: View {
         // update vs end from what the shift's latest observation now is. An
         // empty shift — last obs deleted, or a new shift — ends the countdown.
         obsActivity.sync(latest: model.latest, siteLabel: liveActivitySiteLabel)
+        #endif
+        #if canImport(WatchConnectivity)
+        // Replaces rather than queues, so the watch mirrors the latest reading
+        // and never receives a backlog of a shift's intermediate observations.
+        watchSession.send(latest: model.latest, siteLabel: liveActivitySiteLabel)
         #endif
     }
 

@@ -103,6 +103,29 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             | xcbeautify
 
+      # The watch app needs its own scheme and a watchOS simulator: building the
+      # iOS app scheme does not compile watch content for a simulator
+      # destination, so without this step every watchOS source in the repo would
+      # be compiled by nothing at all.
+      - name: Build (watchOS app + complication)
+        run: |
+          set -euo pipefail
+          udid=$(xcrun simctl list devices available --json \
+            | jq -r '[.devices | to_entries[]
+                      | select(.key | test("watchOS")) | .value[]
+                      | select(.isAvailable)][0].udid')
+          if [ -z "$udid" ] || [ "$udid" = "null" ]; then
+            echo "No available watchOS simulator on this runner:" >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          xcodebuild build \
+            -project BadwaterIgnition.xcodeproj \
+            -scheme BadwaterWatch \
+            -destination "id=$udid" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify
+
       - name: Unit tests (BadwaterIgnitionTests)
         run: |
           set -euo pipefail

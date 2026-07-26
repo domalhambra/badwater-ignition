@@ -67,6 +67,32 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
             siteLabel: siteLabel)
     }
 
+    // MARK: - The wire
+
+    /// The key this travels under in a `WCSession` application context.
+    ///
+    /// The sender lives in the iOS app target and the receiver in the watch
+    /// app target; neither can see the other's types, so this is the one place
+    /// the two processes could disagree about the wire format. Defined here, in
+    /// the module they both link, and round-tripped in the tests below.
+    public static let applicationContextKey = "snapshot"
+
+    /// Encode for `WCSession.updateApplicationContext`.
+    public func applicationContext() throws -> [String: Any] {
+        [Self.applicationContextKey: try JSONEncoder().encode(self)]
+    }
+
+    /// Decode a received application context.
+    ///
+    /// `nil` for an empty context — which is meaningful, not a failure: it is
+    /// how the phone says the shift ended or its last observation was deleted.
+    /// Also `nil` for an unreadable payload, so a malformed delivery clears the
+    /// wrist rather than leaving a stale reading on it.
+    public static func from(applicationContext: [String: Any]) -> WatchSnapshot? {
+        guard let data = applicationContext[applicationContextKey] as? Data else { return nil }
+        return try? JSONDecoder().decode(WatchSnapshot.self, from: data)
+    }
+
     /// Re-derive the glance **on the watch, against the watch's own clock**.
     ///
     /// This is the point of the type. `updateApplicationContext` delivers

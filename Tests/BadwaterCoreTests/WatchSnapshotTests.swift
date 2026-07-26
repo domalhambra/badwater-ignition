@@ -76,6 +76,34 @@ final class WatchSnapshotTests: XCTestCase {
         XCTAssertEqual(s.pigUnshaded, 100)
     }
 
+    // MARK: - The application-context wire
+
+    /// The sender is in the iOS app target and the receiver in the watch target;
+    /// neither can see the other. This round trip is the only thing standing
+    /// between them and a silent disagreement about the wire format.
+    func testApplicationContextRoundTrip() throws {
+        guard let s = WatchSnapshot.from(latest: obs(at: observedAt),
+                                         cadence: cadence, siteLabel: "Division W") else {
+            return XCTFail("expected a snapshot")
+        }
+        let context = try s.applicationContext()
+        XCTAssertEqual(WatchSnapshot.from(applicationContext: context), s)
+    }
+
+    /// An empty context is how the phone says "the shift ended, or its last
+    /// observation was deleted". The watch must clear, not keep showing a
+    /// reading the phone no longer has.
+    func testEmptyApplicationContextDecodesToNothing() {
+        XCTAssertNil(WatchSnapshot.from(applicationContext: [:]))
+    }
+
+    func testMalformedApplicationContextDecodesToNothing() {
+        XCTAssertNil(WatchSnapshot.from(
+            applicationContext: [WatchSnapshot.applicationContextKey: Data("not json".utf8)]))
+        XCTAssertNil(WatchSnapshot.from(
+            applicationContext: [WatchSnapshot.applicationContextKey: "not even data"]))
+    }
+
     // MARK: - The watch re-judges by its own clock
 
     func testFreshSnapshotRendersAsAReading() {

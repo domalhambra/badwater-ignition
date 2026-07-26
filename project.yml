@@ -153,6 +153,11 @@ targets:
     platform: watchOS
     deploymentTarget: "10.0"
     sources:
+      # Includes BadwaterWatchAssets.xcassets, which exists only to carry an
+      # AppIcon set. A watchOS *application* requires one — actool fails the
+      # build with "None of the input catalogs contained a matching ... app icon
+      # set named AppIcon" — whereas the extensions don't. Like the iOS app's,
+      # it declares the slot and carries no artwork yet.
       - path: App/BadwaterWatch
       # Shared with the complication: the snapshot store both processes read.
       - path: App/WatchShared

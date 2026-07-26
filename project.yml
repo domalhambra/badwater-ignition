@@ -30,6 +30,12 @@ targets:
     dependencies:
       - package: BadwaterCore
         product: BadwaterCore
+      # Embedded so the widget ships inside the app. iOS only: the extension has
+      # no macOS destination, and embedding it unconditionally would break the
+      # macOS build that keeps the canImport(AppKit) branches honest.
+      - target: BadwaterWidget
+        embed: true
+        platformFilter: iOS
     entitlements:
       path: App/BadwaterIgnition/BadwaterIgnition.entitlements
       properties:
@@ -75,6 +81,45 @@ targets:
         # Developer supplies their own signing team.
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
+
+  # The home-screen and lock-screen glanceable surfaces. A separate process from
+  # the app: it reads the shared App Group container through RecordReader and
+  # cannot write to it. iOS only — a widget extension has no macOS destination
+  # here, and the watch complication is its own target (it cannot reach an App
+  # Group and syncs over WatchConnectivity instead).
+  BadwaterWidget:
+    type: app-extension
+    supportedDestinations: [iOS]
+    sources:
+      - path: App/BadwaterWidget
+      # RecordLocation (one definition of the container path, shared with the
+      # app) and BadwaterColor (the severity ramp).
+      - path: App/Shared
+      # The colour assets BadwaterColor resolves by name. Color(_:) looks up in
+      # the *calling bundle*, which for an extension is the extension itself, so
+      # the catalog has to be compiled in here too rather than inherited from the
+      # host app.
+      - path: App/BadwaterIgnition/Assets.xcassets
+    dependencies:
+      - package: BadwaterCore
+        product: BadwaterCore
+    entitlements:
+      path: App/BadwaterWidget/BadwaterWidget.entitlements
+      properties:
+        # Must match the app's group exactly. A mismatch here does not error —
+        # it presents as "the widget is always empty". See Task 14 in
+        # docs/PLAN_WIDGET_AND_WATCH.md.
+        com.apple.security.application-groups:
+          - group.com.badwater.ignition
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.widget
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Badwater Ignition
+        INFOPLIST_KEY_NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
 
   BadwaterIgnitionTests:
     type: bundle.unit-test
@@ -130,3 +175,15 @@ schemes:
       targets:
         - BadwaterIgnitionTests
         - BadwaterIgnitionUITests
+
+  # Building the app scheme already compiles the embedded extension, but only
+  # for as long as the embed wiring holds. This scheme compiles the widget on
+  # its own, so a regression in that wiring fails as "the widget didn't build"
+  # rather than silently dropping it from CI's coverage — which is exactly how
+  # the canImport(AppKit) branches in WatchView rotted for months.
+  BadwaterWidget:
+    build:
+      targets:
+        BadwaterWidget: all
+    run:
+      config: Debug

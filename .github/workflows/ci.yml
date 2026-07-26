@@ -85,6 +85,24 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             | xcbeautify
 
+      # The app build above compiles the embedded widget extension, but only for
+      # as long as the embed wiring holds. Building the extension's own scheme
+      # means a regression in that wiring fails loudly here instead of quietly
+      # dropping the widget out of CI's coverage. Neither the widget nor the
+      # watch can be meaningfully *tested* on a runner — but both must compile,
+      # which is why this is wired as the target is created rather than at the
+      # end. The canImport(AppKit) branches in WatchView rotted for months for
+      # exactly the want of a step like this.
+      - name: Build (widget extension)
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project BadwaterIgnition.xcodeproj \
+            -scheme BadwaterWidget \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify
+
       - name: Unit tests (BadwaterIgnitionTests)
         run: |
           set -euo pipefail

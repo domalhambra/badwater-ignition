@@ -11,5 +11,6 @@ import SwiftUI
 struct BadwaterWidgetBundle: WidgetBundle {
     var body: some Widget {
         LatestObsWidget()
+        ObsCountdownLiveActivity()
     }
 }

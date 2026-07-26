@@ -62,6 +62,11 @@ targets:
         INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        # The obs-cadence countdown on the lock screen and in the Dynamic
+        # Island. Without this key Activity.request fails silently at runtime
+        # and the countdown simply never appears. It carries no computed value —
+        # see App/Shared/ObsActivityAttributes.swift.
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
         # Required for the one-shot site GPS fix (SiteLocationProvider). Without
         # this key the authorization request is ignored and the fix never
         # arrives. When-in-use only: the app takes a single fix on demand and

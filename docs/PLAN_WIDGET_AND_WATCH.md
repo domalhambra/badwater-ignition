@@ -21,21 +21,64 @@ XcodeGen · Swift 6 language mode.
 | Task | State |
 |---|---|
 | 1. `ObsGlance` in `BadwaterCore` | **Done** — 13 tests, on `main` |
-| 2. `RecordLocation` | Not started |
-| 3. Widget target | Not started |
-| 4. Timeline provider | Not started |
-| 5. Widget views | Not started |
-| 6. Reload on record mutation | Not started |
-| 7. Live Activity attributes | Not started |
-| 8. Live Activity presentation + lifecycle | Not started |
-| 9. `WatchSnapshot` | Not started |
-| 10–13. watchOS app + complication | Not started |
-| 14. Bundle-id / entitlement audit | Not started |
-| 15. CI covers the new targets | Not started — **do this with Task 3** |
+| 2. `RecordLocation` | **Done** |
+| 3. Widget target | **Done** |
+| 4. Timeline provider | **Done** |
+| 5. Widget views | **Done** — rendering unverified, no device |
+| 6. Reload on record mutation | **Done** — plan was wrong, see below |
+| 7. Live Activity attributes | **Done** |
+| 8. Live Activity presentation + lifecycle | **Done** — lifecycle unverified, no device |
+| 9. `WatchSnapshot` | **Done** — 16 tests |
+| 10–13. watchOS app + complication | **Done** — compiles; behaviour unverified |
+| 14. Bundle-id / entitlement audit | **Done** — see the table below |
+| 15. CI covers the new targets | **Done** — widget + watch schemes, wired with each target |
 
-**Everything from Task 2 onward needs a Mac.** Task 1 was pure core and was done
-in a cloud session; every remaining task touches an Xcode target, an entitlement,
-or a device-only behaviour.
+**Everything from Task 2 onward was written without a Mac**, contrary to the
+note this section used to carry. What made that possible, and what it does and
+does not establish:
+
+- **Swift 6.1 for Linux** — the same version the `core-tests` container uses. So
+  `swift test`, `swift run badwater-vectors --check` and
+  `node conformance/check-web.js` are all real, and the core additions
+  (`WatchSnapshot`, `GlancePhrasing`) are genuinely tested.
+- **XcodeGen built from source on Linux** — `project.yml` is really generated
+  and the resulting `.pbxproj` really inspected. This caught two spec errors
+  before they reached a runner (below).
+- **`swiftc -parse`** over every SwiftUI/WidgetKit/watchOS file — syntax only,
+  not types.
+- **CI's `macos-15` runner** for the actual `xcodebuild`, which is what caught
+  the `Info.plist` trap.
+
+What remains genuinely unverified is everything on the device checklist at the
+end of this document: no rendering, no Live Activity lifecycle, no snapshot
+delivery, and no complication has been seen working. Treat those as written but
+unproven.
+
+### Where the plan as written was wrong
+
+Recorded because each one would otherwise be re-derived by the next reader.
+
+1. **Task 3's `INFOPLIST_KEY_NSExtensionPointIdentifier` does not exist.** The
+   `INFOPLIST_KEY_*` mechanism covers a fixed set of keys and `NSExtension` is
+   not among them, so `GENERATE_INFOPLIST_FILE` produced a plist with no
+   extension point. That builds, links, embeds and *validates* without
+   complaint, then fails at install with `extensionDictionary must be set in
+   placeholder attributes` — a message that never mentions the missing key. Both
+   extensions now use a real `info:` block.
+2. **Task 6's instruction missed two of the five mutation points.** "Wherever
+   `rescheduleCadence()` is called" covers edit, delete and undo; **log** and
+   **new shift** talk to the scheduler directly. Logging is the mutation the
+   widget exists for.
+3. **Task 13's `supportedDestinations: [watchOS]` is rejected by XcodeGen** —
+   watch targets need `platform:`. This is the "least-standard part of this
+   plan" the plan itself flagged.
+4. **Task 14's entitlement list leaves the complication with no data.** It is a
+   separate process from the watch app, so it cannot read the receiver's memory,
+   and the phone's App Group does not cross the pairing. The watch pair needs
+   its own group.
+5. **`embed: true` works** on XcodeGen 2.43.0, answering Task 3's open question:
+   it produces `Embed Foundation Extensions` for the widget and
+   `Embed Watch Content` for the watch app.
 
 ### Starting a fresh session
 
@@ -781,19 +824,30 @@ watchOS). The watch app is embedded in the iOS app.
 
 ---
 
-## Task 14: Bundle-identifier and entitlement audit
+## Task 14: Bundle-identifier and entitlement audit  ✅ DONE
 
-Before any device run, confirm:
+Verified against the generated `.pbxproj` and the generated entitlements:
 
-- App: `com.badwater.ignition`
-- Widget: `com.badwater.ignition.widget`
-- Watch app: `com.badwater.ignition.watchkitapp`
-- Watch complication: `com.badwater.ignition.watchkitapp.widget`
-- App Group `group.com.badwater.ignition` on the app **and** the widget (not the
-  watch — it can't reach it)
+| Target | Bundle identifier | App Group |
+|---|---|---|
+| App | `com.badwater.ignition` | `group.com.badwater.ignition` |
+| Widget | `com.badwater.ignition.widget` | `group.com.badwater.ignition` |
+| Watch app | `com.badwater.ignition.watchkitapp` | `group.com.badwater.ignition.watch` |
+| Watch complication | `com.badwater.ignition.watchkitapp.widget` | `group.com.badwater.ignition.watch` |
 
-A mismatched group identifier presents as "the widget is always empty", which is
-easy to misread as a data bug. Check this first when the widget shows nothing.
+**Two groups, not one.** The plan said the watch gets no App Group because it
+can't reach the phone's — correct, but it left the complication with nothing to
+read. A complication is a separate process from the watch app, so it can't see
+the receiver's in-memory snapshot either; it needs a file in a container they
+both open. Hence `group.com.badwater.ignition.watch`, deliberately a *different*
+identifier: nothing is shared across the pairing, and reusing the phone's would
+imply to the next reader that something is.
+
+`WKCompanionAppBundleIdentifier` on the watch app is `com.badwater.ignition`.
+
+A mismatched group identifier presents as "the widget is always empty" — or "the
+complication is always empty" — which is easy to misread as a data bug. Check
+this first when either shows nothing.
 
 ---
 
@@ -864,6 +918,15 @@ Nothing below can be established from CI.
 **Cross-cutting**
 - [ ] A real multi-day record migrates through `ObservationRecordStore` intact
       (carried over from 1.2 — still outstanding)
+- [ ] **`INFOPLIST_KEY_NSSupportsLiveActivities` actually reaches the built
+      `Info.plist`.** Unlike `NSExtensionPointIdentifier` this one *is* a real
+      build setting, but the failure mode if it isn't is silent —
+      `Activity.request` simply never starts a countdown, with no error. Check
+      the key is present in the built app bundle, not just in `project.yml`.
+      This is the same class of trap as the widget's extension point and it is
+      the one place in this work where it hasn't been ruled out.
+- [ ] Both App Groups are provisioned on the signing team — the phone's and the
+      watch pair's. Neither errors when absent; both just go empty.
 
 ---
 

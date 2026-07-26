@@ -5,6 +5,9 @@ import UIKit
 #elseif canImport(AppKit)
 import AppKit
 #endif
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 /// The **Watch** screen (Weather Watch — the shift observation log).
 ///
@@ -72,6 +75,20 @@ struct WatchView: View {
     @State private var cadence = ObsCadenceScheduler(center: SystemNotificationCenter())
     #endif
 
+    /// Owns the lock-screen / Dynamic Island countdown. Created once with the
+    /// view, and adopts any activity already running from a previous launch —
+    /// without that, a relaunch orphans the old countdown and starts a second
+    /// one, and the crew sees two that disagree.
+    #if os(iOS)
+    @State private var obsActivity = ObsActivityController()
+    #endif
+
+    /// Mirrors the shift's latest observation to a paired watch. Read-only on
+    /// the far side — freezing a reading requires the capture card here.
+    #if canImport(WatchConnectivity)
+    @State private var watchSession = WatchSessionSender()
+    #endif
+
     private var hasObs: Bool { !model.shift.obs.isEmpty }
     /// The trend overlays every retained day, so it's available once ≥2 obs exist
     /// across the history and the current shift (not just the current one).
@@ -127,13 +144,55 @@ struct WatchView: View {
         .sensoryFeedback(.warning, trigger: deleteHaptic)
     }
 
-    /// Re-point the due reminder at the shift's current latest observation. A
-    /// delete, an undo, or a corrected timestamp can all move it, and a stale
+    /// Re-point the due reminder at the shift's current latest observation, and
+    /// refresh the surfaces that mirror the record. A delete, an undo, or a
+    /// corrected timestamp can all move the next-obs moment, and a stale
     /// reminder would fire for a reading that no longer exists.
     private func rescheduleCadence() {
         #if canImport(UserNotifications)
         cadence.reschedule(latestObs: model.latest?.timestamp)
         #endif
+        reloadGlanceSurfaces()
+    }
+
+    /// Tell every glanceable surface the record moved — the widget, and the
+    /// Live Activity counting down to the next observation.
+    ///
+    /// The widget's timeline policy is `.never` — two entries and done — so it
+    /// refreshes only when asked. That is what makes it free to run for a
+    /// 16-hour shift, and it is also why every mutation has to call this: miss
+    /// one and the home screen keeps showing a superseded reading with no clock
+    /// to correct it.
+    ///
+    /// Called from all five: log, edit, delete, undo, new shift. Note that the
+    /// log and new-shift paths do **not** route through ``rescheduleCadence()``
+    /// — they talk to the scheduler directly, one to ask permission first and
+    /// one to cancel rather than re-point — so they call this themselves.
+    private func reloadGlanceSurfaces() {
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
+        #if os(iOS)
+        // One call for all five events: the controller works out start vs
+        // update vs end from what the shift's latest observation now is. An
+        // empty shift — last obs deleted, or a new shift — ends the countdown.
+        obsActivity.sync(latest: model.latest, siteLabel: liveActivitySiteLabel)
+        #endif
+        #if canImport(WatchConnectivity)
+        // Replaces rather than queues, so the watch mirrors the latest reading
+        // and never receives a backlog of a shift's intermediate observations.
+        watchSession.send(latest: model.latest, siteLabel: liveActivitySiteLabel)
+        #endif
+    }
+
+    /// The division or location the countdown is captioned with. Fixed for the
+    /// activity's life, so it is only read when one starts.
+    private var liveActivitySiteLabel: String? {
+        for candidate in [model.shift.division, model.shift.locationName] {
+            let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return nil
     }
 
     /// Advance the wall-clock reference and re-seed the pending obs time with it.
@@ -649,6 +708,10 @@ struct WatchView: View {
                     #if canImport(UserNotifications)
                     cadence.cancel()
                     #endif
+                    // And so is the reading on the home screen — the new shift
+                    // is empty, so the widget must fall back to "No obs logged"
+                    // rather than keep showing the old shift's last obs.
+                    reloadGlanceSurfaces()
                 }
                 Button("Cancel", role: .cancel) { }
             }
@@ -711,6 +774,9 @@ struct WatchView: View {
                 cadence.reschedule(latestObs: model.latest?.timestamp)
             }
             #endif
+            // Outside the #if: the widget follows the record, not the
+            // notification permission, and this is the mutation it exists for.
+            reloadGlanceSurfaces()
             // Hand the time back to the clock. This used to pre-fill the *next*
             // hourly slot (`pendingTime + 1 h`), which forward-dates the reading:
             // a second tap — a glove double-tap, a correction, a back-fill —

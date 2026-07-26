@@ -530,8 +530,12 @@ final class WeatherWatchModel {
 
 extension WeatherObs {
     /// `"HHmm"` label for this obs's timestamp (used for the radio line and rows).
+    ///
+    /// Delegates to the core so the app, the widget and the watch complication
+    /// render an observation's time from one definition. Three surfaces on the
+    /// same crew member disagreeing about what "1430" means would be worse than
+    /// any one of them being absent.
     func timeLabel(_ calendar: Calendar = .current) -> String {
-        let c = calendar.dateComponents([.hour, .minute], from: timestamp)
-        return String(format: "%02d%02d", c.hour ?? 0, c.minute ?? 0)
+        GlancePhrasing.clockLabel(for: timestamp, calendar: calendar)
     }
 }

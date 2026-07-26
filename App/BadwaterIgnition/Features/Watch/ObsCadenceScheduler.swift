@@ -44,7 +44,13 @@ final class ObsCadenceScheduler {
     static let requestIdentifier = "badwater.obs.due"
 
     /// Standard hourly weather-watch cadence, matching the on-screen strip.
-    static let cadence: TimeInterval = 60 * 60
+    ///
+    /// Defined once in the core, because the countdown on the Obs screen, this
+    /// reminder, the widget and the watch complication all mean the same
+    /// interval by it — and because it is also the threshold at which a logged
+    /// reading is superseded (see ``ObsGlance``). Two copies of this number
+    /// would eventually disagree about when a number stops being showable.
+    static let cadence: TimeInterval = ObsGlance.standardCadence
 
     private let center: Center
     private(set) var authorized = false

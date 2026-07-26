@@ -2,7 +2,11 @@
 """Generate the Badwater Ignition color asset catalog (light + dark variants).
 
 Run from repo root:  python3 scripts/generate_color_assets.py
-Outputs colorsets into App/BadwaterIgnition/Assets.xcassets/Colors/.
+Outputs colorsets into App/Shared/BadwaterColors.xcassets/.
+
+The palette lives in App/Shared, not in the app's own catalog, because the
+widget extension and the watch targets need the severity ramp too and Color(_:)
+resolves against the calling bundle.
 
 Keeping the palette in one script makes the brand system a single source of
 truth that the design team can tweak and re-generate.
@@ -60,16 +64,15 @@ def colorset(light, dark):
 
 def main():
     root = pathlib.Path(__file__).resolve().parent.parent
-    base = root / "App" / "BadwaterIgnition" / "Assets.xcassets"
-    (base / "Colors").mkdir(parents=True, exist_ok=True)
-    # Asset catalog roots
+    base = root / "App" / "Shared" / "BadwaterColors.xcassets"
+    base.mkdir(parents=True, exist_ok=True)
+    # Asset catalog root
     (base / "Contents.json").write_text(json.dumps({"info": {"author": "xcode", "version": 1}}, indent=2))
-    (base / "Colors" / "Contents.json").write_text(json.dumps({"info": {"author": "xcode", "version": 1}}, indent=2))
     for name, (light, dark) in PALETTE.items():
-        d = base / "Colors" / f"{name}.colorset"
+        d = base / f"{name}.colorset"
         d.mkdir(exist_ok=True)
         (d / "Contents.json").write_text(json.dumps(colorset(light, dark), indent=2))
-    print(f"Generated {len(PALETTE)} colorsets into {base/'Colors'}")
+    print(f"Generated {len(PALETTE)} colorsets into {base}")
 
 if __name__ == "__main__":
     main()

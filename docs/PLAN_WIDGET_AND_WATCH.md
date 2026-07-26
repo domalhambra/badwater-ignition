@@ -47,7 +47,9 @@ does not establish:
 - **`swiftc -parse`** over every SwiftUI/WidgetKit/watchOS file — syntax only,
   not types.
 - **CI's `macos-15` runner** for the actual `xcodebuild`, which is what caught
-  the `Info.plist` trap.
+  the `Info.plist` traps. The full gate is **green**: iOS build, macOS build,
+  widget extension, watchOS app + complication, `BadwaterIgnitionTests` and
+  `BadwaterIgnitionUITests`.
 
 What remains genuinely unverified is everything on the device checklist at the
 end of this document: no rendering, no Live Activity lifecycle, no snapshot
@@ -79,6 +81,17 @@ Recorded because each one would otherwise be re-derived by the next reader.
 5. **`embed: true` works** on XcodeGen 2.43.0, answering Task 3's open question:
    it produces `Embed Foundation Extensions` for the widget and
    `Embed Watch Content` for the watch app.
+6. **The watch app needs `WKApplication: true`.** Without it the installer reads
+   the bundle as a legacy WatchKit 2.0 app and refuses to install the *containing
+   iOS app* — so a missing key in the watch plist took out the phone's UI tests,
+   three targets away. `WKRunsIndependentlyOfCompanionApp` belongs to the old
+   WatchKit-extension layout and is not used here.
+
+Four of these six only surface at **install** time, not build time. The
+extensions and the watch app compiled, linked, embedded and *validated* clean
+through every one of them. That is the case for Task 15's "wire CI as the target
+is created" instruction, stated more strongly than the plan stated it: a green
+compile establishes almost nothing about an extension or a watch app.
 
 ### Starting a fresh session
 

@@ -183,8 +183,15 @@ targets:
       path: App/BadwaterWatch/Info.plist
       properties:
         CFBundleDisplayName: Ignition
+        # WKApplication marks this as a modern *single-target* watch app. Without
+        # it the installer reads the bundle as a legacy WatchKit 2.0 app and
+        # refuses the whole containing iOS app:
+        #   "Found WatchKit 2.0 app at .../Watch/BadwaterWatch.app but it does
+        #    not have a WKWatchKitApp or WKApplication key set to true"
+        # Note the blast radius — a missing key in the *watch* plist blocks
+        # installation of the phone app, and therefore the phone's UI tests.
+        WKApplication: true
         WKCompanionAppBundleIdentifier: com.badwater.ignition
-        WKRunsIndependentlyOfCompanionApp: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.watchkitapp

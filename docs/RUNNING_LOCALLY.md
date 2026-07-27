@@ -81,11 +81,45 @@ The three schemes in this project:
 
 ---
 
+## The second rule that will bite you
+
+**Build signed, even for the Simulator.** Nearly every `xcodebuild` line in this
+repo passes `CODE_SIGNING_ALLOWED=NO`. That is right for CI, which only needs to
+compile — but it embeds **no entitlements**, which means there is no App Group
+container, which means the widget and the complication read nothing and render
+"No obs logged" forever. Nothing errors. It looks exactly like a data bug, and
+it is the same signature as the mismatched-group-identifier trap in Task 14 of
+the plan.
+
+You do not need an Apple ID to avoid this. Ad-hoc signing is enough:
+
+```bash
+xcodebuild build -project BadwaterIgnition.xcodeproj -scheme BadwaterIgnition \
+  -destination "id=$SIM" \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES
+```
+
+Pressing ▶ in Xcode does the right thing already. It is the command line that
+catches people out.
+
+Check it took, before blaming the code:
+
+```bash
+xcrun simctl get_app_container "$SIM" com.badwater.ignition group.com.badwater.ignition
+```
+
+A path means the group container exists. A usage message means it does not, and
+the record is going to Application Support via `ObservationRecordStore`'s
+fallback — which `RecordReader`, by design, will not follow.
+
+---
+
 ## Phase A — the Simulator (free, do this first)
 
 Most of the device checklist can be run in the Simulator without an Apple
 Developer account. App Group containers work in the Simulator without
-provisioning, which is what makes this possible.
+provisioning — **provided the build is signed**, see the rule above — which is
+what makes this possible.
 
 ### A1. Run the phone app
 
@@ -241,16 +275,18 @@ Two checklist items were settled locally and need no device:
 - ✅ **Widget and watch app are actually embedded** — `PlugIns/BadwaterWidget.appex`
   and `Watch/BadwaterWatch.app` are both present in the built bundle.
 
-## Known drift: CI is on an older Xcode than you are
+## Resolved drift: CI now matches your Xcode
 
-CI runs `macos-15`; this Mac runs **Xcode 26.6**. The newer compiler rejected
-code CI accepted — `Activity<ObsActivityAttributes>` is not `Sendable` in the
-iOS 26 SDK, so sending it into a `Task` from `@MainActor` is now an error, and
-`ObsActivityController.swift` failed to build with three of them.
+CI used to run `macos-15` while this Mac runs **Xcode 26.6**, and the newer
+compiler rejected code CI accepted — `Activity<ObsActivityAttributes>` is not
+`Sendable` in the iOS 26 SDK, so sending it into a `Task` from `@MainActor` is
+an error, and `ObsActivityController.swift` failed to build with three of them.
 
-Fixed with `@preconcurrency import ActivityKit`. Worth revisiting: that
-suppresses concurrency diagnostics for the whole module in that file, where a
+Fixed at the time with `@preconcurrency import ActivityKit`. Still worth
+revisiting: that suppresses concurrency diagnostics for the whole file, where a
 narrow `@unchecked Sendable` wrapper around the one call site would be tighter.
 
-**The general point matters more than the fix: CI green does not mean it builds
-on your Mac.** Consider pinning CI to `macos-26`.
+**CI is pinned to `macos-26` as of 2026-07-27**, so green CI and a green local
+build now mean the same thing. If you move the local toolchain forward, move the
+pin with it — the general point outlived the specific error: *CI green does not
+mean it builds on your Mac* unless the two are on the same Xcode.

@@ -106,30 +106,40 @@ Simulator pass left unverified. Paste this:
 > policy** guardrail is what every check here is really testing, and
 > `docs/RUNNING_LOCALLY.md` for how to build and run.
 >
-> Three things are already settled and need no re-checking:
-> `NSSupportsLiveActivities` reaches the built bundle; the widget, Live Activity
-> and watch app all render; and `WatchConnectivity` snapshot delivery works.
+> Settled, no re-checking: `NSSupportsLiveActivities` reaches the built bundle;
+> the widget, Live Activity and watch app all render; `WatchConnectivity`
+> snapshot delivery works; the `58:––` countdown is system behaviour and closed;
+> CI is pinned to `macos-26`.
+>
+> **Build signed, always.** `CODE_SIGNING_ALLOWED=NO` embeds no entitlements, so
+> the App Group container does not exist and every glanceable surface reads
+> empty for reasons that have nothing to do with the code. Use
+> `CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES` —
+> ad-hoc signing needs no Apple ID and the group container then resolves. See
+> the second Simulator pass below.
 >
 > Do these, in order:
 >
-> 1. **Look at the phone widget.** The 2026-07-27 conditions rebalance changed
->    `systemSmall` and `accessoryRectangular` and they have not been seen since.
->    They use the same golden-tested phrasing as the watch and build clean, but
->    `accessoryRectangular` is the family that already truncated once.
+> 1. **Look at the phone widget** — the last thing the Simulator can answer and
+>    still unanswered. The 2026-07-27 conditions rebalance changed `systemSmall`
+>    and `accessoryRectangular` and neither has been seen since. The data path is
+>    confirmed live; what is unknown is purely whether the four-line content
+>    fits, and `accessoryRectangular` is the family that already truncated once.
+>    The section below gives the tap sequence that works and the two automation
+>    quirks that waste an hour if you rediscover them.
 > 2. **Provision both App Groups** on the signing team —
 >    `group.com.badwater.ignition` (app + widget) and
->    `group.com.badwater.ignition.watch` (watch app + complication). Neither
->    errors when absent; the surface just goes permanently empty, which reads
->    like a data bug. Needs the paid membership.
+>    `group.com.badwater.ignition.watch` (watch app + complication). Needed for
+>    the device and the store, *not* for Simulator work. Neither errors when
+>    absent; the surface just goes permanently empty, which reads like a data
+>    bug.
 > 3. **Work the device checklist** at the end of the document — the items no
 >    simulator can answer: sunlight legibility, complication on a real face,
 >    snapshot delivery with the phone locked and the app backgrounded, a
 >    late-delivered snapshot rendering by the watch's clock, and a real
->    multi-day record migrating through `ObservationRecordStore`.
-> 4. **Close out the `58:––` countdown.** The phone's lock screen renders the
->    Live Activity timer with dashes for seconds while the same activity on the
->    watch renders `58:54`. Almost certainly system behaviour; confirm and
->    record it either way.
+>    multi-day record migrating through `ObservationRecordStore`. Also confirm
+>    the narrow residual on `58:––`: with the screen actively lit rather than
+>    dimmed, the seconds should tick.
 >
 > Tick items off in the document as they pass, and record anything the device
 > disproves. Verify with `swift test`,
@@ -155,10 +165,11 @@ here reads the record out of one.
   `concurrency` group, or narrowing the `push` trigger, fixes it. Noticed while
   driving this plan's CI; deliberately not changed here, because a CI change
   mid-flight would have muddied the signal this work depended on.
-- **CI is on `macos-15`; development is on Xcode 26.** That drift already cost a
-  build — CI accepted an `Activity`-is-not-`Sendable` error the newer compiler
-  rejects, so green CI said nothing about whether the app built on a Mac. Pin CI
-  to `macos-26`.
+- ~~**CI is on `macos-15`; development is on Xcode 26.**~~ ✅ **Done
+  2026-07-27** — `app-build` is pinned to `macos-26`, with the reason recorded
+  in the workflow so the next person to bump it knows what the pin is protecting
+  against. Both the iOS and watchOS schemes build clean locally on Xcode 26.6
+  against the regenerated project.
 - **`@preconcurrency import ActivityKit`** in `ObsActivityController` is the
   blunt fix for that error. A narrow `@unchecked Sendable` wrapper around the
   three call sites would suppress less.
@@ -993,6 +1004,13 @@ Nothing below can be established from CI.
       the one place in this work where it hasn't been ruled out.
 - [ ] Both App Groups are provisioned on the signing team — the phone's and the
       watch pair's. Neither errors when absent; both just go empty.
+- [ ] **The build under test is actually signed.** `CODE_SIGNING_ALLOWED=NO`
+      embeds no entitlements, so there is no App Group container and every
+      surface here reads empty regardless of provisioning. Check with
+      `xcrun simctl get_app_container <udid> com.badwater.ignition
+      group.com.badwater.ignition` before concluding anything about a blank
+      widget. Same failure signature as a mismatched group identifier, different
+      cause — check this one first, it is cheaper to rule out.
 
 ---
 
@@ -1038,7 +1056,149 @@ simulators. See [`RUNNING_LOCALLY.md`](RUNNING_LOCALLY.md).
   minutes tick, seconds show as dashes. Very likely system behaviour rather than
   a bug: it uses `Text(timerInterval:countsDown:)`, the documented API, and the
   *same* activity mirrored into the watch's Smart Stack renders full seconds
-  (`58:54`). Confirm on the device and close it out.
+  (`58:54`). Confirm on the device and close it out. **→ resolved as system
+  behaviour on 2026-07-27; see below.**
+
+---
+
+## Second Simulator pass — 2026-07-27
+
+A follow-on to the pass above, on the same Mac (Xcode 26.6, iPhone 17 Pro
+simulator `18B07D80`). Baseline re-established first and unchanged throughout:
+**149 core tests, vectors up to date, 1172 parity checks / 0 mismatches**, iOS
+and watchOS schemes both `BUILD SUCCEEDED`.
+
+### The finding that matters most: a `CODE_SIGNING_ALLOWED=NO` build has no App Group at all
+
+This was found by accident and it invalidates part of how this work has been
+verified.
+
+Every `xcodebuild` invocation in this document, in `RUNNING_LOCALLY.md` and in
+`.github/workflows/ci.yml` passes `CODE_SIGNING_ALLOWED=NO`. That flag does not
+just skip the signature — it means **no entitlements are embedded in the
+product**, so `containerURL(forSecurityApplicationGroupIdentifier:)` returns
+`nil` and there is no group container on the device at all:
+
+```
+# built with CODE_SIGNING_ALLOWED=NO
+$ xcrun simctl get_app_container <udid> com.badwater.ignition group.com.badwater.ignition
+Usage: simctl get_app_container ...          # i.e. no such container
+
+# same source, built with CODE_SIGN_IDENTITY="-" CODE_SIGNING_ALLOWED=YES
+$ xcrun simctl get_app_container <udid> com.badwater.ignition group.com.badwater.ignition
+/Users/…/data/Containers/Shared/AppGroup/D926533C-…
+```
+
+Confirmed from the other end too: with the unsigned build, logging an
+observation wrote `shift.json` to **Application Support**, via
+`ObservationRecordStore`'s documented fallback. `RecordReader` deliberately has
+no such fallback — so the widget was reading a container that did not exist,
+and would have rendered "No obs logged" no matter what was logged.
+
+This is Task 14's trap arriving from a direction Task 14 did not anticipate. The
+audit there is about the group *identifiers* matching; this is about the
+entitlement never being present in the first place, and it presents identically
+— a permanently empty surface, no error.
+
+**Ad-hoc signing is the fix and it needs no Apple ID.** `CODE_SIGN_IDENTITY="-"`
+with signing allowed builds and installs fine on a simulator with zero
+code-signing identities on the Mac, and the group container then resolves. After
+rebuilding that way, logging an observation put the record in
+`…/Shared/AppGroup/…/Record/shift.json` as designed.
+
+Consequences worth acting on:
+
+- **Any simulator check of the widget or the complication must use a signed
+  build.** Verifying against an unsigned one tests nothing about the data path.
+- **CI's use of `CODE_SIGNING_ALLOWED=NO` is still right** — it is a compile
+  gate and should not need signing — but it now has a documented limit: CI can
+  never say anything about whether the App Group wiring works.
+
+### `58:––` — closed out as system behaviour
+
+Reproduced on the first try: the lock-screen Live Activity rendered
+`Last obs 1000 / Next obs in 28:–– / Weather watch`, minutes ticking, seconds as
+dashes, exactly as reported.
+
+This is **iOS behaviour, not a defect in this code**. When the Lock Screen is in
+its low-refresh presentation, iOS renders `Text(timerInterval:)` with the
+seconds place replaced by `––` and updates the minutes once a minute, to avoid
+per-second redraws for burn-in and battery. Apple's own Timer app shows `2:––`
+in the same state, and the behaviour is reported against `Text(timerInterval:)`
+generally rather than against any particular use of it. The Simulator's locked
+screen sits permanently in that presentation, which is why it reproduces there
+every time.
+
+That also explains the asymmetry the first pass noticed: the watch's Smart Stack
+renders the *same* activity with full seconds (`58:54`) because watchOS applies
+a different refresh policy to that surface.
+
+Nothing to change. `Text(timerInterval:countsDown:)` remains the correct API —
+it is the only primitive iOS interpolates frame-to-frame on a Live Activity, so
+replacing it with anything self-updating would be strictly worse. **The residual
+device check is narrow**: confirm that on a real iPhone with the screen actively
+lit (not dimmed to Always-On) the seconds do tick, which is what the
+low-refresh explanation predicts.
+
+- [x] `58:––` explained and closed — system behaviour, no code change.
+
+### Item 1 — the phone widget's rebalanced rendering: still not seen
+
+Honest result: **not verified.** The Simulator on this Mac would not stay up
+long enough to place a widget.
+
+What happened, so nobody repeats it: the widget gallery is reachable only
+through SpringBoard, and driving SpringBoard through the available automation
+proved unreliable in a specific way. The jiggle-mode **Edit** button never
+accepted a tap across roughly a dozen attempts at verified-correct coordinates,
+while taps inside the app itself landed first time. The lock-screen route
+(*long-press → Customize → Add Widgets*) **does** work and reached the gallery
+with "Badwater Ignition" listed — twice — but the simulator's display pipeline
+froze three separate times (the clock stopping while the host clock ran on,
+followed by `machPortNotConnected` and a spontaneous shutdown), each time before
+the widget could be selected. Two mitigations that did help and are worth
+reusing: a throwaway "warm-up" tap before each real tap, because the first input
+after an idle gap is routinely swallowed; and re-issuing any gesture that
+returns `Input send … timed out`.
+
+What *is* now established, which was not before: the widget's **data path** is
+live end-to-end on a signed build — `shift.json` sits in the App Group container
+that `RecordReader` reads, with a real logged observation in it (`1000`, 75 °F,
+RH 20 %, N 0-3, PIG 70/50). The remaining unknown is purely **layout**: whether
+`systemSmall` and `accessoryRectangular` render the rebalanced four-line content
+without truncating. The phrasing feeding them is golden-tested (`pigSummary`
+asserted under 18 characters and keeping its `shd` label; `conditionsCompact`
+swept across the range), so this is a fit question, not a wording one.
+
+To finish it by hand — the sequence that works, with a **signed** build
+installed:
+
+1. `xcodebuild build … CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES
+   CODE_SIGNING_ALLOWED=YES`, then `xcrun simctl install` and launch.
+2. Log an observation, then confirm the record landed in the group container:
+   `xcrun simctl get_app_container <udid> com.badwater.ignition
+   group.com.badwater.ignition`.
+3. Lock (`⌘L`), long-press the lock screen, **Customize** → **Lock Screen** →
+   **Add Widgets** → **Badwater Ignition** → the rectangular one → **Done**.
+4. For `systemSmall`, long-press the home screen → **Edit** → **Add Widget**.
+5. Read both against the four requirements in Task 5 — time as prominent as the
+   number, age in words, and **no PIG at all** once overdue.
+
+### Blocked on hardware, not on effort
+
+- **Item 2, provisioning both App Groups.** This Mac has **zero code-signing
+  identities** (`security find-identity -v -p codesigning` → `0 valid identities
+  found`) and no Apple ID configured in Xcode. Registering
+  `group.com.badwater.ignition` and `group.com.badwater.ignition.watch` requires
+  signing in to a paid membership in the Developer portal, which only Dom can
+  do. Note the finding above, though: it is **not** needed for Simulator work —
+  ad-hoc signing gives a working group container without any membership. The
+  membership is needed for the device, and for the store.
+- **Item 3, the device checklist.** `xcrun xctrace list devices` shows only this
+  Mac and simulators — no iPhone is attached and no Apple Watch is paired.
+  Sunlight legibility, a complication on a real face, background snapshot
+  delivery with the phone locked, a late-delivered snapshot, and a real
+  multi-day `ObservationRecordStore` migration all remain untouched.
 
 ---
 

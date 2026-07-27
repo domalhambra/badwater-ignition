@@ -59,7 +59,7 @@ struct LatestObsComplication: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Latest Obs")
-        .description("The last logged observation's PIG, with its time.")
+        .description("The last logged observation's conditions, with its time.")
         .supportedFamilies([.accessoryCircular, .accessoryCorner, .accessoryInline])
     }
 }
@@ -71,12 +71,16 @@ struct ComplicationView: View {
     var body: some View {
         switch family {
         case .accessoryInline:
-            // One line, system-rendered. Room for the number and its time, which
-            // is the minimum this surface is allowed to show.
+            // One line, system-rendered, and the system truncates it without
+            // asking. So the order is chosen for how it *degrades*: the obs time
+            // leads, then dry bulb, then RH, then wind. Anything the system cuts
+            // is taken off the least critical end, and the time anchor — the one
+            // thing a displayed value may never appear without — is the last
+            // thing that could ever be lost.
             switch glance {
             case .none: Text("No obs")
             case .reading(let r):
-                Text("PIG \(r.pigUnshaded)% · \(GlancePhrasing.clockLabel(for: r.observedAt))")
+                Text("\(GlancePhrasing.clockLabel(for: r.observedAt)) · \(r.conditionsCompact)")
             case .overdue(let o):
                 Text(GlancePhrasing.overdue(seconds: o.overdueBySeconds))
             }
@@ -90,10 +94,14 @@ struct ComplicationView: View {
     }
 }
 
-/// Circular is the tightest of the three. It gets the number and the obs time
-/// and nothing else — and on the overdue path, the interval instead of the
-/// number. There is no room for an age *and* a time, so it shows the time: an
-/// age with no anchor is the one thing worse than neither.
+/// Circular is the tightest of the three. It gets **one** value, and that value
+/// is relative humidity — the single most decision-relevant number in a fire
+/// weather observation, and the reason this family stopped showing PIG.
+///
+/// The second line carries both the label and the obs time, because neither can
+/// be dropped: unlabelled, the number is indistinguishable from the PIG this
+/// surface used to show; undated, it is a value with no anchor, which the
+/// display policy forbids outright.
 private struct CircularGlance: View {
     let glance: ObsGlance
 
@@ -104,9 +112,9 @@ private struct CircularGlance: View {
                 Text("--").font(.title3)
                 Text("no obs").font(.system(size: 10))
             case .reading(let r):
-                Text("\(r.pigUnshaded)")
+                Text(r.relativeHumidity.map { "\($0)" } ?? "--")
                     .font(.system(.title2, design: .rounded).weight(.bold))
-                Text(GlancePhrasing.clockLabel(for: r.observedAt))
+                Text("RH \(GlancePhrasing.clockLabel(for: r.observedAt))")
                     .font(.system(size: 10))
             case .overdue(let o):
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -127,8 +135,10 @@ private struct CornerGlance: View {
         case .none:
             Text("--").widgetLabel("no obs")
         case .reading(let r):
-            Text("\(r.pigUnshaded)%")
-                .widgetLabel("PIG · \(GlancePhrasing.clockLabel(for: r.observedAt))")
+            // Same choice as circular: RH, labelled and dated. The curved label
+            // has room for the wind too, which circular does not.
+            Text(r.relativeHumidity.map { "\($0)%" } ?? "--")
+                .widgetLabel("RH · \(r.windSummary ?? "wind —") · \(GlancePhrasing.clockLabel(for: r.observedAt))")
         case .overdue(let o):
             Image(systemName: "exclamationmark.triangle.fill")
                 .widgetLabel(GlancePhrasing.overdue(seconds: o.overdueBySeconds))

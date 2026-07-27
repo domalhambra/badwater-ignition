@@ -37,20 +37,22 @@ struct WatchGlanceView: View {
                     // is the failure this design exists to avoid.
                     Text("Obs \(GlancePhrasing.clockLabel(for: r.observedAt))")
                         .font(.headline)
-                    HStack(alignment: .firstTextBaseline, spacing: 3) {
-                        Text("\(r.pigUnshaded)")
-                            .font(.system(size: 44, weight: .bold, design: .rounded))
-                            .foregroundStyle(r.behavior.color)
-                        Text("%")
-                            .font(.headline)
-                            .foregroundStyle(r.behavior.color)
-                    }
-                    Text("PIG unshaded · \(r.pigShaded)% shaded")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(r.behavior.title)
+                    // The observation leads. Dry bulb, RH and wind are what the
+                    // crew came to this screen for; PIG is derived from them and
+                    // is one input among several to a decision, so it follows
+                    // rather than dominates. Rendered from the shared phrasing
+                    // so the wrist, the complication and the phone widget cannot
+                    // word the same record differently.
+                    Text(r.conditionsLine)
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    // Still tinted by the fire-behavior band: this is the watch
+                    // app's own screen, not an accessory family, so colour
+                    // survives and remains meaningful.
+                    Text(r.pigLine)
                         .font(.caption)
-                    Text(GlancePhrasing.age(seconds: r.ageSeconds))
+                        .foregroundStyle(r.behavior.color)
+                    Text("\(r.behavior.title) · \(GlancePhrasing.age(seconds: r.ageSeconds))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 

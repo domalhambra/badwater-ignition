@@ -55,25 +55,23 @@ private struct SmallGlance: View {
                     .foregroundStyle(BadwaterColor.muted)
 
             case .reading(let r):
-                // The time is as prominent as the number. A PIG without its time
-                // is precisely the failure this whole design avoids, so they are
-                // set at the same weight and never separated.
+                // The time is as prominent as the reading. A value without its
+                // time is precisely the failure this whole design avoids, so
+                // they are set at the same weight and never separated.
                 Text(GlancePhrasing.clockLabel(for: r.observedAt))
                     .font(.system(.title3, design: .rounded).weight(.semibold))
                     .foregroundStyle(BadwaterColor.ink)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("\(r.pigUnshaded)")
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .foregroundStyle(r.behavior.color)
-                    Text("%")
-                        .font(.headline)
-                        .foregroundStyle(r.behavior.color)
-                }
-                Text("PIG unshaded · \(r.pigShaded)% shaded")
-                    .font(.caption2)
-                    .foregroundStyle(BadwaterColor.muted)
-                Text(GlancePhrasing.age(seconds: r.ageSeconds))
+                // The observation, not the number derived from it. Dry bulb, RH
+                // and wind are what a crew reads at a glance; PIG follows.
+                Text(r.conditionsLine)
+                    .font(.system(.title3, design: .rounded).weight(.medium))
+                    .foregroundStyle(BadwaterColor.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(r.pigLine)
                     .font(.caption)
+                    .foregroundStyle(r.behavior.color)
+                Text("\(r.behavior.title) · \(GlancePhrasing.age(seconds: r.ageSeconds))")
+                    .font(.caption2)
                     .foregroundStyle(BadwaterColor.muted)
 
             case .overdue(let o):
@@ -111,9 +109,12 @@ private struct RectangularGlance: View {
             case .reading(let r):
                 Text("Obs \(GlancePhrasing.clockLabel(for: r.observedAt))")
                     .font(.headline)
-                Text("PIG \(r.pigUnshaded)% · \(r.pigShaded)% shaded")
+                // Compact phrasing on this family. The full line truncated here
+                // — `"PIG 40% · 40% s…"` — and a lock-screen widget that cuts
+                // off mid-value is worse than one that says less.
+                Text(r.conditionsCompact)
                     .font(.body)
-                Text("\(r.behavior.title) · \(GlancePhrasing.age(seconds: r.ageSeconds))")
+                Text("\(r.pigLine) · \(GlancePhrasing.age(seconds: r.ageSeconds))")
                     .font(.caption)
 
             case .overdue(let o):

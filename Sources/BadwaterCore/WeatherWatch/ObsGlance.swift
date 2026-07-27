@@ -46,13 +46,60 @@ public enum ObsGlance: Equatable, Sendable {
         /// Seconds since the observation. Never negative.
         public let ageSeconds: TimeInterval
 
+        // MARK: Observed conditions
+        //
+        // The observation itself, as distinct from the PIG derived from it.
+        // These lead on every glanceable surface — see
+        // ``GlancePhrasing/conditions(dryBulbF:relativeHumidity:wind:)``.
+        //
+        // Optional because a `Reading` has two origins. Built from a
+        // ``WeatherObs`` they are always present. Built from a ``WatchSnapshot``
+        // they may not be, because the snapshot crossed a wire from a phone
+        // whose build may predate them — the same reason `behaviorRawValue`
+        // travels as a raw value. A watch that can render three of four values
+        // is worth far more than one that fails to decode and shows a blank
+        // face.
+
+        /// Observed dry-bulb temperature, °F.
+        public let dryBulbF: Int?
+        /// Observed relative humidity, %.
+        public let relativeHumidity: Int?
+        /// Observed wind as ``Wind/spotString`` — `"Calm"`, `"SW 4-6"`,
+        /// `"N 3-5 Gust 12"`. `nil` when no wind was recorded on the obs, which
+        /// is not the same as calm and is rendered differently.
+        public let windSummary: String?
+
         public init(pigUnshaded: Int, pigShaded: Int, behavior: FireBehavior,
-                    observedAt: Date, ageSeconds: TimeInterval) {
+                    observedAt: Date, ageSeconds: TimeInterval,
+                    dryBulbF: Int? = nil, relativeHumidity: Int? = nil,
+                    windSummary: String? = nil) {
             self.pigUnshaded = pigUnshaded
             self.pigShaded = pigShaded
             self.behavior = behavior
             self.observedAt = observedAt
             self.ageSeconds = ageSeconds
+            self.dryBulbF = dryBulbF
+            self.relativeHumidity = relativeHumidity
+            self.windSummary = windSummary
+        }
+
+        /// The observed conditions, ready to render.
+        public var conditionsLine: String {
+            GlancePhrasing.conditions(dryBulbF: dryBulbF,
+                                      relativeHumidity: relativeHumidity,
+                                      wind: windSummary)
+        }
+
+        /// The observed conditions for single-line families.
+        public var conditionsCompact: String {
+            GlancePhrasing.conditionsCompact(dryBulbF: dryBulbF,
+                                             relativeHumidity: relativeHumidity,
+                                             wind: windSummary)
+        }
+
+        /// The Probability of Ignition, worded as a secondary line.
+        public var pigLine: String {
+            GlancePhrasing.pigSummary(unshaded: pigUnshaded, shaded: pigShaded)
         }
     }
 
@@ -101,7 +148,13 @@ public enum ObsGlance: Equatable, Sendable {
             // A back-filled observation, or one taken across a clock adjustment,
             // can be stamped ahead of `now`. "Aged −5 minutes" is not something
             // to render, so the floor is zero.
-            ageSeconds: max(0, elapsed)))
+            ageSeconds: max(0, elapsed),
+            // Read off the frozen estimate's own inputs rather than anywhere
+            // live, so the conditions shown are the ones this PIG was computed
+            // from and cannot drift apart from it.
+            dryBulbF: latest.estimate.input.dryBulbF,
+            relativeHumidity: latest.estimate.input.relativeHumidity,
+            windSummary: latest.wind?.spotString))
     }
 
     /// The next moment the glance changes on its own — the second entry a widget

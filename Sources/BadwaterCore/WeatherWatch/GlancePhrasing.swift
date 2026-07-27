@@ -60,4 +60,57 @@ public enum GlancePhrasing {
     public static func overdue(seconds: TimeInterval) -> String {
         max(0, seconds) < 60 ? "obs due now" : "obs overdue \(duration(seconds: seconds))"
     }
+
+    // MARK: - Observed conditions
+
+    /// The observed conditions line: `"75°F · RH 20% · Calm"`.
+    ///
+    /// These are the values a crew actually reads off a glanceable surface. PIG
+    /// is a *derived* number and one input among several to a decision; dry bulb,
+    /// relative humidity and wind are the observation itself. So this line leads
+    /// on every glanceable surface and the Probability of Ignition follows it.
+    ///
+    /// ### Every segment is labelled or unambiguous
+    /// `75°F` carries its unit and `RH 20%` its name, because two bare
+    /// percentages on one small screen — humidity and ignition probability — is
+    /// exactly the confusion this app cannot afford. The wind segment is
+    /// ``Wind/spotString``, reused rather than re-worded so the wrist and the
+    /// spot request cannot disagree.
+    ///
+    /// ### Missing is "—", never absent
+    /// A dropped segment would read as though the value were zero, or leave
+    /// "Calm" looking like a recorded wind when none was taken. An unrecorded
+    /// value renders as an em dash so the gap is visible as a gap.
+    public static func conditions(dryBulbF: Int?,
+                                  relativeHumidity: Int?,
+                                  wind: String?) -> String {
+        let temp = dryBulbF.map { "\($0)°F" } ?? "—"
+        let rh = relativeHumidity.map { "RH \($0)%" } ?? "RH —"
+        return "\(temp) · \(rh) · \(wind ?? "wind —")"
+    }
+
+    /// The same line for surfaces that cannot hold it: `"75° · 20% · Calm"`.
+    ///
+    /// For the inline complication and other single-line families. Units are
+    /// dropped because the order is fixed and the degree sign and percent sign
+    /// still separate the two numbers; anything longer truncates, and a
+    /// truncated conditions line is worse than a terse one.
+    public static func conditionsCompact(dryBulbF: Int?,
+                                         relativeHumidity: Int?,
+                                         wind: String?) -> String {
+        let temp = dryBulbF.map { "\($0)°" } ?? "—"
+        let rh = relativeHumidity.map { "\($0)%" } ?? "—"
+        return "\(temp) · \(rh) · \(wind ?? "—")"
+    }
+
+    /// The Probability of Ignition, worded as the secondary line it now is:
+    /// `"PIG 40/40 shd"`.
+    ///
+    /// Short enough for `accessoryRectangular`, which truncated the previous
+    /// wording (`"PIG 40% · 40% shaded"` rendered as `"PIG 40% · 40% s…"`,
+    /// losing the very word that distinguished the two numbers). One percent
+    /// sign governs the pair and `shd` labels the second.
+    public static func pigSummary(unshaded: Int, shaded: Int) -> String {
+        "PIG \(unshaded)/\(shaded)% shd"
+    }
 }

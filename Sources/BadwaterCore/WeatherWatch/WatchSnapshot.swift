@@ -34,14 +34,38 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
     /// shift has no label yet.
     public let siteLabel: String?
 
+    // MARK: Observed conditions
+    //
+    // Dry bulb, RH and wind are what a crew reads off a wrist; PIG is a derived
+    // number and one input among several to a decision. All three therefore
+    // travel, and the watch leads with them.
+    //
+    // Optional on the wire, for the same reason `behaviorRawValue` is a raw
+    // value: the sender is a separate binary that may be older than the
+    // receiver. A missing field degrades one segment of one line to "—" rather
+    // than failing the decode and leaving the wrist blank.
+
+    /// Observed dry-bulb temperature, °F.
+    public let dryBulbF: Int?
+    /// Observed relative humidity, %.
+    public let relativeHumidity: Int?
+    /// Observed wind as ``Wind/spotString``. `nil` when none was recorded —
+    /// which is not the same as calm.
+    public let windSummary: String?
+
     public init(pigUnshaded: Int, pigShaded: Int, behaviorRawValue: Int,
-                observedAt: Date, dueAt: Date, siteLabel: String?) {
+                observedAt: Date, dueAt: Date, siteLabel: String?,
+                dryBulbF: Int? = nil, relativeHumidity: Int? = nil,
+                windSummary: String? = nil) {
         self.pigUnshaded = pigUnshaded
         self.pigShaded = pigShaded
         self.behaviorRawValue = behaviorRawValue
         self.observedAt = observedAt
         self.dueAt = dueAt
         self.siteLabel = siteLabel
+        self.dryBulbF = dryBulbF
+        self.relativeHumidity = relativeHumidity
+        self.windSummary = windSummary
     }
 
     /// The fire-behavior band of the unshaded value — the more hazardous one,
@@ -64,7 +88,10 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
             behaviorRawValue: latest.estimate.unshaded.interpretation.rawValue,
             observedAt: latest.timestamp,
             dueAt: latest.timestamp.addingTimeInterval(cadence),
-            siteLabel: siteLabel)
+            siteLabel: siteLabel,
+            dryBulbF: latest.estimate.input.dryBulbF,
+            relativeHumidity: latest.estimate.input.relativeHumidity,
+            windSummary: latest.wind?.spotString)
     }
 
     // MARK: - The wire
@@ -116,6 +143,9 @@ public struct WatchSnapshot: Codable, Equatable, Sendable {
             observedAt: observedAt,
             // Same floor as ObsGlance: a back-filled observation, or one taken
             // across a clock adjustment, can be stamped ahead of `now`.
-            ageSeconds: max(0, now.timeIntervalSince(observedAt))))
+            ageSeconds: max(0, now.timeIntervalSince(observedAt)),
+            dryBulbF: dryBulbF,
+            relativeHumidity: relativeHumidity,
+            windSummary: windSummary))
     }
 }

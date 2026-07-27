@@ -979,6 +979,113 @@ Nothing below can be established from CI.
 
 ---
 
+## Simulator pass — 2026-07-27
+
+First time any of these surfaces has been run. **Simulator, not device**, so
+nothing below discharges the device checklist above — but several items that
+were pure unknowns are now known to work, and one is now known to be broken.
+
+Setup: Xcode 26.6, iPhone 17 Pro + paired Apple Watch Series 11 (46mm)
+simulators. See [`RUNNING_LOCALLY.md`](RUNNING_LOCALLY.md).
+
+**Confirmed working**
+
+- `NSSupportsLiveActivities` **does** reach the built `Info.plist` (`true`).
+  The plan's flagged likeliest-silent-failure is not one. Independently
+  confirmed by the Live Activity actually starting.
+- Widget and watch app are genuinely embedded — `PlugIns/BadwaterWidget.appex`
+  and `Watch/BadwaterWatch.app` both present in the built bundle.
+- Widget appears in the gallery and renders the logged obs from the App Group
+  container: `Obs 0645 / PIG 40% · 40% s… / High · 4 min ago`.
+- Live Activity **starts on the first obs of a shift** and its countdown **runs
+  with the app backgrounded and the phone locked** (ticked 59 → 58 min on the
+  lock screen). Shows no PIG, per the display policy.
+- Watch app installs, launches, and shows the correct `No obs logged / Log one
+  on the phone.` empty state.
+- `WatchConnectivity` snapshot delivery **works** — the watch went from the
+  empty state to `Obs 0645 · 40% · PIG unshaded · 40% shaded · High · just now`
+  after the phone logged. Frozen value, with time and age.
+
+**Found broken — now fixed**
+
+- [x] **The `accessoryRectangular` widget truncated its own PIG line**, rendering
+      `PIG 40% · 40% s…` and losing the one word that distinguished the two
+      numbers. Fixed as part of the conditions rebalance below:
+      ``GlancePhrasing/pigSummary(unshaded:shaded:)`` is now `PIG 40/40% shd`,
+      with a test sweeping the range and asserting it stays under 18 characters
+      and keeps its `shd` label.
+
+**Open question, needs the device**
+
+- The Live Activity countdown renders as `58:––` on the phone's lock screen —
+  minutes tick, seconds show as dashes. Very likely system behaviour rather than
+  a bug: it uses `Text(timerInterval:countsDown:)`, the documented API, and the
+  *same* activity mirrored into the watch's Smart Stack renders full seconds
+  (`58:54`). Confirm on the device and close it out.
+
+---
+
+## Conditions over PIG — 2026-07-27
+
+A design correction, made after seeing the surfaces run. **PIG was being
+over-indexed on.** It led every glanceable surface at display size while the
+observation it derives from — dry bulb, RH, wind — was absent entirely. Those
+three are what a crew actually reads; PIG is one derived input among several to
+a decision.
+
+So every glanceable surface now leads with the observation and PIG follows:
+
+    Obs 0706
+    75°F · RH 20% · N 0-3
+    PIG 40/40% shd
+    High · just now
+
+**Core.** ``ObsGlance/Reading`` and ``WatchSnapshot`` gained `dryBulbF`,
+`relativeHumidity` and `windSummary`. New shared phrasing —
+``GlancePhrasing/conditions(dryBulbF:relativeHumidity:wind:)``, its
+`conditionsCompact` variant for single-line families, and `pigSummary` — so the
+wrist, the complication and the phone widget cannot word one record three ways.
+
+Three decisions worth keeping:
+
+- **The conditions fields are optional on the wire.** The phone that sends a
+  snapshot is a separate binary from the watch that renders it and may be older.
+  A missing field degrades one segment to `—` instead of failing the decode and
+  blanking the face — the same reasoning as `behaviorRawValue`.
+- **Unrecorded is not calm.** A missing wind renders `wind —`, never `Calm`, and
+  a test asserts it. Dropping the segment would have implied a reading nobody
+  took.
+- **RH is labelled everywhere.** RH and PIG are both percentages on the same
+  small screen; the conditions line always says `RH 20%`, swept by a test across
+  0–100.
+
+**Complication.** Circular and corner now show **RH** rather than PIG — the
+single most decision-relevant number — labelled and dated, because unlabelled it
+would be indistinguishable from the PIG this surface used to show. Inline
+carries all three, ordered `time · temp · RH · wind` so that anything the system
+truncates comes off the least critical end and the time anchor can never be what
+is lost.
+
+**Verified**: core suite 140 → 149 tests, vectors byte-identical, 1172 parity
+checks green, iOS and watchOS schemes build, and the new watch layout was
+confirmed rendering on the simulator with a real wind value and no truncation.
+**Not re-verified visually**: the phone widget's new rendering — it uses the same
+golden-tested phrasing and builds clean, but it has not been seen since the
+change.
+
+**Build fix required to get this far**
+
+Xcode 26.6 rejected `ObsActivityController.swift` with three
+`sending '…' risks causing data races` errors — `Activity<Attributes>` is not
+`Sendable` in the iOS 26 SDK. CI (`macos-15`) accepts it. Fixed with
+`@preconcurrency import ActivityKit`; a narrower `@unchecked Sendable` wrapper
+around the three call sites would be tighter and is worth revisiting.
+
+**CI is on an older Xcode than the development Mac.** Green CI did not mean it
+built locally. Consider pinning CI to `macos-26`.
+
+---
+
 ## What this plan does not do
 
 - **No logging from the widget or watch.** Freezing a reading requires the

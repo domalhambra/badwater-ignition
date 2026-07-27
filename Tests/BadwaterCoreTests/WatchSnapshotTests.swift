@@ -200,4 +200,70 @@ final class WatchSnapshotTests: XCTestCase {
         }
         XCTAssertEqual(s.dueAt, observedAt.addingTimeInterval(ObsGlance.standardCadence))
     }
+
+    // MARK: - Observed conditions
+
+    /// The watch leads with the observation, so the observation has to reach it.
+    func testCarriesTheObservedConditions() {
+        var o = obs(at: observedAt)
+        o.wind = .measured(.init(low: 4, high: 6), .southwest)
+        guard let s = WatchSnapshot.from(latest: o, cadence: cadence, siteLabel: nil) else {
+            return XCTFail("expected a snapshot")
+        }
+        XCTAssertEqual(s.dryBulbF, 90)
+        XCTAssertEqual(s.relativeHumidity, 8)
+        XCTAssertEqual(s.windSummary, "SW 4-6")
+
+        guard case .reading(let r) = s.glance(at: observedAt) else {
+            return XCTFail("expected a reading")
+        }
+        XCTAssertEqual(r.conditionsLine, "90°F · RH 8% · SW 4-6")
+    }
+
+    /// An obs with no wind recorded is not an obs in calm conditions, and the
+    /// wrist must not imply otherwise.
+    func testUnrecordedWindIsNotRenderedAsCalm() {
+        guard let s = WatchSnapshot.from(latest: obs(at: observedAt),
+                                         cadence: cadence, siteLabel: nil) else {
+            return XCTFail("expected a snapshot")
+        }
+        XCTAssertNil(s.windSummary)
+        guard case .reading(let r) = s.glance(at: observedAt) else {
+            return XCTFail("expected a reading")
+        }
+        XCTAssertFalse(r.conditionsLine.lowercased().contains("calm"))
+        XCTAssertTrue(r.conditionsLine.contains("wind —"))
+    }
+
+    /// The sender is a separate binary and may be older than the receiver. A
+    /// payload without the conditions fields must still decode — degrading one
+    /// line to dashes, not blanking the face.
+    func testDecodesAPayloadPredatingTheConditionsFields() throws {
+        let legacy = """
+        {"pigUnshaded":40,"pigShaded":40,"behaviorRawValue":2,\
+        "observedAt":\(observedAt.timeIntervalSinceReferenceDate),\
+        "dueAt":\(observedAt.addingTimeInterval(cadence).timeIntervalSinceReferenceDate)}
+        """
+        let s = try JSONDecoder().decode(WatchSnapshot.self, from: Data(legacy.utf8))
+        XCTAssertEqual(s.pigUnshaded, 40)
+        XCTAssertNil(s.dryBulbF)
+        XCTAssertNil(s.relativeHumidity)
+
+        guard case .reading(let r) = s.glance(at: observedAt) else {
+            return XCTFail("expected a reading")
+        }
+        XCTAssertEqual(r.conditionsLine, "— · RH — · wind —")
+    }
+
+    /// Round-trips through the actual wire encoding, conditions included.
+    func testConditionsSurviveTheApplicationContext() throws {
+        var o = obs(at: observedAt)
+        o.wind = .lightVariable()
+        guard let sent = WatchSnapshot.from(latest: o, cadence: cadence, siteLabel: "Div W") else {
+            return XCTFail("expected a snapshot")
+        }
+        let received = WatchSnapshot.from(applicationContext: try sent.applicationContext())
+        XCTAssertEqual(received, sent)
+        XCTAssertEqual(received?.windSummary, "Calm")
+    }
 }

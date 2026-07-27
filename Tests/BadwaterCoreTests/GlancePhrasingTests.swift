@@ -133,4 +133,63 @@ final class GlancePhrasingTests: XCTestCase {
                           "overdue text carried unexpected digits: \(text)")
         }
     }
+
+    // MARK: - Observed conditions
+
+    func testConditionsLeadsWithTheObservation() {
+        XCTAssertEqual(
+            GlancePhrasing.conditions(dryBulbF: 75, relativeHumidity: 20, wind: "Calm"),
+            "75°F · RH 20% · Calm")
+        XCTAssertEqual(
+            GlancePhrasing.conditions(dryBulbF: 96, relativeHumidity: 8, wind: "SW 4-6"),
+            "96°F · RH 8% · SW 4-6")
+    }
+
+    func testConditionsCompactDropsUnitsButNotOrder() {
+        XCTAssertEqual(
+            GlancePhrasing.conditionsCompact(dryBulbF: 75, relativeHumidity: 20, wind: "Calm"),
+            "75° · 20% · Calm")
+    }
+
+    /// An unrecorded value must render as a visible gap. Dropping the segment
+    /// would leave "Calm" looking like a recorded wind, and a missing RH looking
+    /// like the number beside it.
+    func testMissingValuesRenderAsDashesRatherThanVanishing() {
+        XCTAssertEqual(
+            GlancePhrasing.conditions(dryBulbF: 75, relativeHumidity: 20, wind: nil),
+            "75°F · RH 20% · wind —")
+        XCTAssertEqual(
+            GlancePhrasing.conditions(dryBulbF: nil, relativeHumidity: nil, wind: "Calm"),
+            "— · RH — · Calm")
+        XCTAssertEqual(
+            GlancePhrasing.conditionsCompact(dryBulbF: nil, relativeHumidity: nil, wind: nil),
+            "— · — · —")
+    }
+
+    /// RH and PIG are both percentages on the same small screen. The conditions
+    /// line must name its humidity so the two can never be read for each other.
+    func testConditionsLabelsItsHumidity() {
+        for rh in 0...100 {
+            let text = GlancePhrasing.conditions(dryBulbF: 70, relativeHumidity: rh, wind: "Calm")
+            XCTAssertTrue(text.contains("RH \(rh)%"),
+                          "humidity was not labelled: \(text)")
+        }
+    }
+
+    /// The regression this wording exists for: the previous PIG line rendered as
+    /// `"PIG 40% · 40% s…"` on `accessoryRectangular`, losing the one word that
+    /// distinguished the two numbers.
+    func testPigSummaryStaysShortEnoughForTheLockScreen() {
+        for unshaded in 0...100 {
+            for shaded in stride(from: 0, through: 100, by: 10) {
+                let text = GlancePhrasing.pigSummary(unshaded: unshaded, shaded: shaded)
+                XCTAssertLessThanOrEqual(text.count, 18,
+                                         "PIG summary too long to render: \(text)")
+                XCTAssertTrue(text.hasPrefix("PIG "))
+                XCTAssertTrue(text.hasSuffix("shd"),
+                              "shaded value lost its label: \(text)")
+            }
+        }
+        XCTAssertEqual(GlancePhrasing.pigSummary(unshaded: 40, shaded: 40), "PIG 40/40% shd")
+    }
 }

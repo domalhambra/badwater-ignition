@@ -29,7 +29,14 @@ jobs:
   # both destinations and runs both app test bundles.
   app-build:
     name: SwiftUI app (iOS + macOS build, app tests)
-    runs-on: macos-15
+    # Pinned to macos-26 so CI compiles with the same Xcode 26 SDK development
+    # runs on. On macos-15 this job accepted `ObsActivityController.swift`
+    # unchanged while Xcode 26.6 rejected it with three
+    # `sending '…' risks causing data races` errors — `Activity<Attributes>` is
+    # not Sendable in the iOS 26 SDK. Green CI therefore said nothing about
+    # whether the app built on a Mac, which is the one thing this job exists to
+    # say. Bump this deliberately, together with the local toolchain.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 

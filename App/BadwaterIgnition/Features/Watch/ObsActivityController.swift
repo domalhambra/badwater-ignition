@@ -1,6 +1,6 @@
 #if os(iOS)
 import Foundation
-import ActivityKit
+@preconcurrency import ActivityKit
 import BadwaterCore
 
 /// Starts, updates and ends the obs-cadence Live Activity.

@@ -95,44 +95,54 @@ compile establishes almost nothing about an extension or a watch app.
 
 ### Starting a fresh session
 
-**All 15 tasks are written and merged** (#31, `e0aa43d`). What remains is not
-code — it is the device verification checklist at the end of this document,
-none of which has been run. Paste this:
+**All 15 tasks are written and merged**, and as of 2026-07-27 every surface has
+been **seen running in the Simulator** (`e8455b3` on `main`) — see the Simulator
+pass below. What remains is the **device** checklist, plus one thing the
+Simulator pass left unverified. Paste this:
 
-> Finish `docs/PLAN_WIDGET_AND_WATCH.md` in `domalhambra/badwater-ignition`.
-> **All 15 tasks are already written, merged and CI-green — do not re-implement
-> any of them.** What's left is the **device verification checklist** at the end
-> of that document, which has never been run: no rendering, no Live Activity
-> lifecycle, no snapshot delivery and no complication has been seen working.
+> Continue `docs/PLAN_WIDGET_AND_WATCH.md` in `domalhambra/badwater-ignition`.
+> **All 15 tasks are written, merged, and confirmed rendering in the Simulator —
+> do not re-implement any of them.** Read `CLAUDE.md` first: the **display
+> policy** guardrail is what every check here is really testing, and
+> `docs/RUNNING_LOCALLY.md` for how to build and run.
 >
-> Read `CLAUDE.md` first — the **display policy** guardrail is what every one of
-> those checks is really testing.
+> Three things are already settled and need no re-checking:
+> `NSSupportsLiveActivities` reaches the built bundle; the widget, Live Activity
+> and watch app all render; and `WatchConnectivity` snapshot delivery works.
 >
-> Work through the checklist on a real device with a paired watch, and fix what
-> it finds. Start with the two items most likely to fail, both of which fail
-> *silently*:
+> Do these, in order:
 >
-> 1. Confirm `NSSupportsLiveActivities` is actually present in the **built** app
->    bundle, not just in `project.yml`. If it isn't, `Activity.request` never
->    starts a countdown and nothing errors.
-> 2. Confirm both App Groups are provisioned on the signing team —
+> 1. **Look at the phone widget.** The 2026-07-27 conditions rebalance changed
+>    `systemSmall` and `accessoryRectangular` and they have not been seen since.
+>    They use the same golden-tested phrasing as the watch and build clean, but
+>    `accessoryRectangular` is the family that already truncated once.
+> 2. **Provision both App Groups** on the signing team —
 >    `group.com.badwater.ignition` (app + widget) and
->    `group.com.badwater.ignition.watch` (watch app + complication). An
->    unprovisioned group doesn't error either; the surface is just permanently
->    empty, which reads like a data bug.
+>    `group.com.badwater.ignition.watch` (watch app + complication). Neither
+>    errors when absent; the surface just goes permanently empty, which reads
+>    like a data bug. Needs the paid membership.
+> 3. **Work the device checklist** at the end of the document — the items no
+>    simulator can answer: sunlight legibility, complication on a real face,
+>    snapshot delivery with the phone locked and the app backgrounded, a
+>    late-delivered snapshot rendering by the watch's clock, and a real
+>    multi-day record migrating through `ObservationRecordStore`.
+> 4. **Close out the `58:––` countdown.** The phone's lock screen renders the
+>    Live Activity timer with dashes for seconds while the same activity on the
+>    watch renders `58:54`. Almost certainly system behaviour; confirm and
+>    record it either way.
 >
-> Then the rest of the checklist. Tick items off in the document as they pass,
-> and record anything the device disproves — several of this plan's assumptions
-> were already wrong in ways only a real build caught.
->
-> Work on branch `claude/firefighting-weather-calculator-refactor-mmkxgy` off the
-> latest `main`. Verify with `swift test`,
+> Tick items off in the document as they pass, and record anything the device
+> disproves. Verify with `swift test`,
 > `swift run badwater-vectors --check conformance/vectors.json`,
-> `node conformance/check-web.js`, and `xcodegen generate && xcodebuild build`.
+> `node conformance/check-web.js`, and
+> `xcodegen generate && xcodebuild build`.
 
-Requirements for that session: macOS with Xcode 16+, `xcodegen`, `xcbeautify`, a
-Swift 6 toolchain, and Node — **plus a physical iPhone and a paired Apple Watch**,
-which is the part that actually gates this work now.
+Requirements for that session: macOS with Xcode 26, `xcodegen`, `xcbeautify`, a
+Swift 6 toolchain, and Node — **plus a paid Apple Developer Program membership**
+and a physical iPhone with a paired Apple Watch. The membership is the real gate:
+a free personal team cannot provision App Groups, and every glanceable surface
+here reads the record out of one.
+
 
 ### Also outstanding, not on the checklist
 
@@ -145,6 +155,13 @@ which is the part that actually gates this work now.
   `concurrency` group, or narrowing the `push` trigger, fixes it. Noticed while
   driving this plan's CI; deliberately not changed here, because a CI change
   mid-flight would have muddied the signal this work depended on.
+- **CI is on `macos-15`; development is on Xcode 26.** That drift already cost a
+  build — CI accepted an `Activity`-is-not-`Sendable` error the newer compiler
+  rejects, so green CI said nothing about whether the app built on a Mac. Pin CI
+  to `macos-26`.
+- **`@preconcurrency import ActivityKit`** in `ObsActivityController` is the
+  blunt fix for that error. A narrow `@unchecked Sendable` wrapper around the
+  three call sites would suppress less.
 
 ---
 

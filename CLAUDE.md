@@ -66,7 +66,7 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 
 ## Guardrails
 
-- **"Obs" is a feature, not the brand.** The app's three tabs are **Humidity · Ignition · Obs** (Obs = the weather-observations tab). The product is **"Badwater Ignition"** (singular, matching the native app). Never rename the "Obs" tab/feature vocabulary to "Ignition," and never re-plural the brand.
+- **"Obs" is a feature, not the brand.** The app's two tabs are **Ignition · Obs** (Obs = the weather-observations tab; the wet-bulb humidity calculation lives inside Ignition's weather group, not on a tab of its own). The product is **"Badwater Ignition"** (singular, matching the native app). Never rename the "Obs" tab/feature vocabulary to "Ignition," and never re-plural the brand.
 - **Safety-relevant, decision-support only.** Not affiliated with or endorsed by the NWCG. Keep the disclaimer intact; keep every table value provenance-documented.
 - **Where a computed value may appear** (settled by design review; full reasoning in `docs/PLAN_WIDGET_AND_WATCH.md`):
   - **Persistent, glanceable surfaces — widgets, complications, Live Activities, lock-screen notifications — show only *frozen, logged* observations**, always with time and age, and stop showing the number once it's superseded. The live estimate never reaches them.
@@ -88,6 +88,7 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 | `PROJECT_CHARTER.md` | vision, status, milestones |
 | `DESIGN.md` | design system |
 | `docs/PARITY.md`, `docs/DATA_PROVENANCE.md`, `docs/APP_STORE.md` | parity machinery, table provenance, store listing draft |
+| `docs/UX_TWO_TAB.md`, `docs/PLAN_TWO_TAB.md` | the two-tab restructure — design record and its implementation plan |
 | `docs/RED_TEAM.md` | red-team findings, what's fixed vs. recommended, iOS capability roadmap |
 | `docs/IMPLEMENTATION_PLAN.md` | sequenced plan for the red-team recommendations + iOS capabilities (dependencies, verification, cloud-vs-Mac split) |
 | `ATTRIBUTION.md` | NWCG public-domain sourcing + disclaimer |

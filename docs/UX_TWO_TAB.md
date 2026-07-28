@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Proposed — awaiting sign-off; implementation follows the PR slicing in §12, task-planned in `PLAN_TWO_TAB.md`. |
+| **Status** | Signed off and implemented — the four slices in §12 landed together on the review branch; task plan and per-slice proof in `PLAN_TWO_TAB.md`. This now reads as the design record. |
 | **Scope** | Collapse the three-tab shell to two tabs (Ignition · Obs); absorb the Humidity screen into Ignition's weather group; restructure the Obs hourly loop around a capture sheet, a freeze receipt, and a post-log broadcast screen; expose the site factors on Obs; promote Book mode from v2 candidate to the Ignition tab's marquee follow-on. |
 | **Non-goals** | No calculation changes — `Sources/PlateworksCore/` and `web/engine.js` are untouched, and no conformance vectors regenerate. No widget, watch-app, or Live Activity changes (they follow the record, which doesn't change shape). No visual-brand changes — colors, type, and component styling stay as specified in `DESIGN.md`. |
 | **Companions** | `docs/PLAN_TWO_TAB.md` (the task-level implementation plan for this spec) · `DESIGN.md` (visual system) · `docs/UX_WORKFLOW.md` (the shipped Ignition restructure this builds on) · `docs/PLAN_WIDGET_AND_WATCH.md` (the volatile-vs-frozen design line) |

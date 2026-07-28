@@ -19,8 +19,13 @@
   status = 301
   force = true
 
-# Security + privacy headers. The app makes no third-party or outbound requests;
-# everything (IRPG tables, psychrometrics, .xlsx export) runs locally in-page.
+# Security + privacy headers. Every calculation (IRPG tables, psychrometrics,
+# .xlsx export) still runs locally in-page — no observation data ever leaves the
+# device. The one outbound request is Plausible page analytics, added 2026-07-28:
+# cookieless, no personal data, no cross-site tracking. It is allowed explicitly
+# in script-src (to load the script) and connect-src (for its event beacon).
+# Without BOTH, the CSP blocks it silently and the tag looks installed but
+# reports nothing.
 [[headers]]
   for = "/*"
   [headers.values]
@@ -28,7 +33,7 @@
     X-Frame-Options = "SAMEORIGIN"
     Referrer-Policy = "no-referrer"
     Permissions-Policy = "geolocation=(self), camera=(), microphone=(), interest-cohort=()"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://plausible.io; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://plausible.io; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
 
 # Always revalidate the entry point and the service worker so updates ship fast.
 [[headers]]

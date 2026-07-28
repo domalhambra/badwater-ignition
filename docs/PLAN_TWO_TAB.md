@@ -13,7 +13,7 @@ precedes any PR here.
 |---|---|---|
 | 1 | Shell + Humidity merge (native) | **In review** |
 | 2 | Obs loop — sheet, receipt, success screen, site factors (native) | **In review** |
-| 3 | Web twin + month-freeze parity fix | Not started |
+| 3 | Web twin + month-freeze parity fix | **In review** |
 | 4 | Docs — CLAUDE.md guardrail, `DESIGN.md` §4, README, App Store copy | Not started |
 
 Book mode (spec §10) is **not in this plan** — it gets its own spec first.

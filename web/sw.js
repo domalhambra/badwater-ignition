@@ -1,52 +1,31 @@
-// Service worker for Badwater Ignition — makes the whole app available offline (a
-// fireline has no signal). The app is a single self-contained document, so
-// caching the shell + icons is the entire app; all compute (IRPG tables,
-// psychrometrics, .xlsx export) runs client-side with no network.
-const CACHE = "badwater-ignition-v4";
-const ASSETS = [
-  "/",
-  "/index.html",
-  "/engine.js",
-  "/app.js",
-  "/manifest.webmanifest",
-  "/icon.svg",
-  "/icon-512.png",
-  "/apple-touch-icon.png",
-];
+// Tombstone service worker for the retired badwater.guide origin.
+//
+// This origin no longer serves the app. It lives at
+// https://ignition.plateworks.org/ now. An installed PWA cannot follow an HTTP
+// redirect: its service worker answers fetches before the network, so the old
+// app would keep running from cache forever. This worker replaces the old one
+// on its next update check, deletes every cache, unregisters itself, and sends
+// any open windows to the new origin.
+//
+// Deployed from the `tombstone` branch, which the legacy badwater-ignition
+// Netlify site is pinned to. `main` still carries the live app, serving from
+// the plateworks-ignition site. Do not merge this branch.
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
-  );
+self.addEventListener("install", () => self.skipWaiting());
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil((async () => {
+    await self.clients.claim();
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+    await self.registration.unregister();
+    const clients = await self.clients.matchAll({ type: "window" });
+    clients.forEach((c) => c.navigate("https://ignition.plateworks.org/"));
+  })());
 });
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET") return;
-
-  // Network-first for the page itself, so a new deploy is picked up when online;
-  // fall back to the cached shell when offline.
-  if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put("/index.html", copy));
-          return res;
-        })
-        .catch(() => caches.match("/index.html"))
-    );
-    return;
-  }
-
-  // Cache-first for static assets (icons, manifest).
-  event.respondWith(caches.match(req).then((cached) => cached || fetch(req)));
+// Never answer from cache again. Every fetch goes to the network, which now
+// serves the tombstone page and its redirect.
+self.addEventListener("fetch", (e) => {
+  e.respondWith(fetch(e.request));
 });

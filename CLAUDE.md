@@ -6,8 +6,8 @@ Operator manual for Claude. Human entry point is `README.md`; project vision, st
 
 A fast, offline field calculator for wildland firefighters: **Probability of Ignition (PIG)**, **Fine Fuel Moisture (FFM)**, and **relative humidity**, computed cell-for-cell from the NWCG *Incident Response Pocket Guide* (IRPG, PMS 461) and belt-weather-kit tables. It ships twice from one repo:
 
-- a **native SwiftUI app** (iOS/macOS) in `App/BadwaterIgnition/` — in development toward an App Store release, and
-- a **static, offline-first web PWA** in `web/`, live at **ignition.badwater.guide**.
+- a **native SwiftUI app** (iOS/macOS) in `App/PlateworksIgnition/` — in development toward an App Store release, and
+- a **static, offline-first web PWA** in `web/`, live at **ignition.plateworks.org** (the legacy `badwater.guide` hosts are mid-cutover; see Deploy & hosting).
 
 This is the only **safety-relevant** Badwater property. A wrong PIG on either platform is exactly the bug this repo exists to prevent, so fidelity to the printed guide is non-negotiable and correctness discipline (below) is not optional.
 
@@ -15,14 +15,14 @@ This is the only **safety-relevant** Badwater property. A wrong PIG on either pl
 
 | Domain | Source of truth |
 |---|---|
-| All calculation logic | **`Sources/BadwaterCore/`** — pure Swift, no UI, no Apple-framework deps, Linux-testable. This is the truth. |
-| Native UI | `App/BadwaterIgnition/` (SwiftUI, generated via XcodeGen from `project.yml`) |
-| Web calculation | `web/engine.js` — a hand-written **JS twin of `BadwaterCore`**. Never the source; always the port. |
+| All calculation logic | **`Sources/PlateworksCore/`** — pure Swift, no UI, no Apple-framework deps, Linux-testable. This is the truth. |
+| Native UI | `App/PlateworksIgnition/` (SwiftUI, generated via XcodeGen from `project.yml`) |
+| Web calculation | `web/engine.js` — a hand-written **JS twin of `PlateworksCore`**. Never the source; always the port. |
 | Web UI | `web/app.js` (twin of `App/`) + `web/index.html` |
 | IRPG table values | cell-exact transcriptions, provenance-documented in `docs/DATA_PROVENANCE.md`. Not formula approximations. |
-| Conformance vectors | generated from `BadwaterCore` via `swift run badwater-vectors` → `conformance/vectors.json` |
+| Conformance vectors | generated from `PlateworksCore` via `swift run plateworks-vectors` → `conformance/vectors.json` |
 
-**Rule:** change `BadwaterCore` first, then port to `web/engine.js`. The web side never leads.
+**Rule:** change `PlateworksCore` first, then port to `web/engine.js`. The web side never leads.
 
 ## Parity discipline (the core rule)
 
@@ -37,20 +37,20 @@ If you touch calculation on either side, regenerate vectors and run the conforma
 ## Build & test
 
 ```sh
-swift test                    # BadwaterCore suite — runs on any Swift toolchain (incl. Linux CI)
+swift test                    # PlateworksCore suite — runs on any Swift toolchain (incl. Linux CI)
 node conformance/check-web.js # web ⇄ core parity gate
 ```
 
 The SwiftUI app is gated too, by the `app-build` CI job (macOS runner): XcodeGen
-generate → build for iOS Simulator **and** macOS → `BadwaterIgnitionTests` →
-`BadwaterIgnitionUITests`. Both app test bundles are real gates now; if you touch
+generate → build for iOS Simulator **and** macOS → `PlateworksIgnitionTests` →
+`PlateworksIgnitionUITests`. Both app test bundles are real gates now; if you touch
 `App/`, expect them to run. UI tests launch with `-uiTestingResetState` so each
 starts from first-launch defaults — see `AppEnvironment`.
 
 Native app (macOS + Xcode):
 ```sh
 brew install xcodegen         # once
-xcodegen generate             # BadwaterIgnition.xcodeproj from project.yml
+xcodegen generate             # PlateworksIgnition.xcodeproj from project.yml
 ```
 The color palette is generated: `python3 scripts/generate_color_assets.py`.
 
@@ -58,9 +58,11 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 
 ## Deploy & hosting
 
-- **Continuous deploy:** the web app is a **git-connected Netlify site** (`badwater-ignition`). Pushing to `main` auto-deploys `web/` (base directory `web/`, no build command). There is no manual deploy step.
+**Mid-cutover as of 2026-07-28** (Plateworks migration, Phase 2). Two Netlify sites serve this repo:
+
+- **Live app:** the **`plateworks-ignition`** Netlify site serves **`ignition.plateworks.org`** (canonical; `obs.plateworks.org` is an alias). Pushing to `main` auto-deploys `web/` (base directory `web/`, no build command). There is no manual deploy step. Proxied CNAMEs in the `plateworks.org` Cloudflare zone.
+- **Tombstone:** the legacy **`badwater-ignition`** site is pinned to the **`tombstone` branch** and serves `ignition.badwater.guide` / `obs.badwater.guide` — a service worker that self-destructs installed PWAs and sends them to the new host. **Never merge `tombstone` into `main`**, and never repoint that site back to `main`. After ≥48h dwell (start: 2026-07-28T03:19:30Z) the legacy hosts get Cloudflare 301s and the site is decommissioned (migration plan Task 5, gated on real-device confirmation).
 - **When you change any cached web asset, bump `CACHE` in `web/sw.js`** (currently `badwater-ignition-v4` → `-v5`, …) or field devices keep serving the old app offline.
-- **Domain:** `ignition.badwater.guide` (canonical). The former host `obs.badwater.guide` is kept as a Netlify domain alias and **301-redirects** (rule in `web/netlify.toml`); its Cloudflare CNAME stays for the redirect to fire. Both are proxied CNAMEs → `badwater-ignition.netlify.app` in the `badwater.guide` Cloudflare zone.
 - GitHub: `domalhambra/badwater-ignition`.
 
 ## Guardrails
@@ -79,9 +81,9 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 
 | Path | What |
 |---|---|
-| `Sources/BadwaterCore/` | pure calculation core (source of truth) |
-| `Sources/BadwaterVectors/` | `swift run badwater-vectors` — emits conformance vectors |
-| `App/BadwaterIgnition/` | SwiftUI app (iOS/macOS) + its test targets |
+| `Sources/PlateworksCore/` | pure calculation core (source of truth) |
+| `Sources/PlateworksVectors/` | `swift run plateworks-vectors` — emits conformance vectors |
+| `App/PlateworksIgnition/` | SwiftUI app (iOS/macOS) + its test targets |
 | `web/` | offline PWA (engine.js, app.js, index.html, sw.js, manifest, netlify.toml) |
 | `conformance/` | golden vectors + Node parity harness |
 | `PROJECT_CHARTER.md` | vision, status, milestones |

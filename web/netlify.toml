@@ -1,4 +1,6 @@
-# Netlify configuration for ignition.badwater.guide.
+# Netlify configuration for ignition.plateworks.org (the plateworks-ignition
+# site). The legacy badwater-ignition site serves the tombstone branch, whose
+# own copy of this file still carries the old-host redirect.
 #
 # The site is fully static (a single self-contained page + PWA assets) — there is
 # no build step. When connecting this repo to Netlify, set the site's
@@ -8,12 +10,12 @@
 [build]
   publish = "."
 
-# The app was formerly branded/served as obs.badwater.guide. That host is kept
-# as a domain alias on the Netlify site so this 301 fires, sending any old
-# links/bookmarks to the canonical ignition.badwater.guide.
+# obs.plateworks.org is a domain alias on this site so this 301 fires, sending
+# old muscle memory to the canonical ignition.plateworks.org. (obs is the
+# app's retired name; the alias exists to redirect, never to serve.)
 [[redirects]]
-  from = "https://obs.badwater.guide/*"
-  to = "https://ignition.badwater.guide/:splat"
+  from = "https://obs.plateworks.org/*"
+  to = "https://ignition.plateworks.org/:splat"
   status = 301
   force = true
 

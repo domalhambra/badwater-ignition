@@ -2,7 +2,7 @@
 // fireline has no signal). The app is a single self-contained document, so
 // caching the shell + icons is the entire app; all compute (IRPG tables,
 // psychrometrics, .xlsx export) runs client-side with no network.
-const CACHE = "badwater-ignition-v6";
+const CACHE = "badwater-ignition-v7";
 const ASSETS = [
   "/",
   "/index.html",

@@ -59,6 +59,8 @@ let obsSeq=1;
 // ---- persistence: keep the shift across reloads / app restarts. Guarded so a
 // private window or blocked storage just no-ops. Forward-compatible: restored
 // fields override defaults, new fields keep theirs (Object.assign). ----
+// NOT brand copy — do not rename to "plateworks.*". This key holds every saved
+// observation; changing it orphans a firefighter's logged data on next open.
 const LS_KEY="badwater.obs.v1";
 function saveState(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({S:S,obsSeq:obsSeq})); }catch(e){} }
 function loadState(){ try{
@@ -446,10 +448,10 @@ function downloadXlsx(){
     const bytes=buildXlsx(allShifts(),S.coordLat,S.coordLon);
     const blob=new Blob([bytes],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url=URL.createObjectURL(blob);
-    const a=document.createElement("a"); a.href=url; a.download="BadwaterIgnition-observations.xlsx";
+    const a=document.createElement("a"); a.href=url; a.download="PlateworksIgnition-observations.xlsx";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1500);
-    toast("Downloaded BadwaterIgnition-observations.xlsx");
+    toast("Downloaded PlateworksIgnition-observations.xlsx");
   }catch(e){ toast("Download blocked in this frame — open the artifact full-page"); }
 }
 

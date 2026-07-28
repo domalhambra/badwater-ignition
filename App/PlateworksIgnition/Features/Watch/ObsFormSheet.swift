@@ -346,16 +346,20 @@ struct ObsFormSheet: View {
         return VStack(spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("FREEZES").fieldLabel()
+                // The identifier and the spoken label sit on the Text itself
+                // rather than on a synthesized container element: a
+                // `.accessibilityElement(children: .ignore)` wrapper here — in
+                // the sheet's bottom safe-area inset — did not surface to
+                // XCUITest at all, while a plain labelled Text does.
                 Text(receipt.display)
                     .font(PlateworksFont.labelSmall)
                     .foregroundStyle(PlateworksColor.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("freeze-receipt")
+                    .accessibilityLabel(receipt.spoken)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .ignore)
-            .accessibilityIdentifier("freeze-receipt")
-            .accessibilityLabel(receipt.spoken)
 
             Button { commit() } label: {
                 HStack(spacing: 10) {

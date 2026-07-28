@@ -42,12 +42,16 @@ const S={
   wind:{low:3,high:6,dir:"SW",gust:0},
   month:now.getMonth()+1, timeBand:timeBandFromClock(now.getHours(),now.getMinutes()), clockOverridden:false,
   aspect:"S", slope:"steep", elevationDelta:"level",
-  // humidity tab
-  hDry:78, hWet:60, hBand:4, hAlaska:false,
+  // Alaska elevation thresholds — a labelling choice for the band chips, never
+  // a change to the psychrometrics (which take the band directly).
+  alaska:false,
   // watch
   obs:[], addressee:"", locationName:"", division:"", siteElevationFeet:null, coordLat:"", coordLon:"",
   siteConfirmed:false, lastRemoved:null, undo:false, editing:null, edit:null,
   history:[], shiftDateMs:0,
+  // The observation form: null (closed), "capture", "edit", or "logged" (the
+  // post-log broadcast screen). One sheet, two modes — the twin of ObsFormSheet.
+  sheet:null, loggedId:null,
   pendingMin:now.getHours()*60+now.getMinutes(), note:"", trendMetric:"pigU"
 };
 let obsSeq=1;
@@ -61,6 +65,15 @@ function loadState(){ try{
   const raw=localStorage.getItem(LS_KEY); if(!raw)return;
   const d=JSON.parse(raw);
   if(d&&d.S){ Object.assign(S,d.S); S.editing=null; S.edit=null;
+    // Never restore an open sheet: it would reopen over the record on launch,
+    // and a half-entered capture is not a reading anyone should inherit.
+    S.sheet=null; S.loggedId=null;
+    // The Humidity tab's scratch state and its stored tab selection are gone.
+    // Alaska was the one setting worth keeping — it is regional, and a crew
+    // that had it on should not have to rediscover it mid-shift.
+    if(typeof S.alaska!=="boolean"&&typeof d.S.hAlaska==="boolean")S.alaska=d.S.hAlaska;
+    delete S.hDry; delete S.hWet; delete S.hBand; delete S.hAlaska;
+    if(S.tab!=="ignition"&&S.tab!=="watch")S.tab="ignition";
     if(typeof d.obsSeq==="number"&&d.obsSeq>obsSeq)obsSeq=d.obsSeq; }
 }catch(e){} }
 loadState();
@@ -75,7 +88,6 @@ function retainedDayCount(){ const s=new Set(); allShifts().forEach(sh=>{ if(sh.
 //====================== Helpers ======================
 const scr=()=>document.getElementById("screen");
 function stepField(f,d,min,max){ S[f]=Math.min(max,Math.max(min,S[f]+d)); if(f==="wetBulbF"&&S.wetBulbF>S.dryBulbF)S.wetBulbF=S.dryBulbF; if(f==="dryBulbF"&&S.wetBulbF>S.dryBulbF)S.wetBulbF=S.dryBulbF; render(); }
-function stepH(f,d,min,max){ S[f]=Math.min(max,Math.max(min,S[f]+d)); if(S.hWet>S.hDry)S.hWet=S.hDry; render(); }
 function clockLabel(min){ const h=Math.floor(min/60)%24,m=min%60; return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"); }
 function esc(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function chip(field,val,label,cur){ return `<button class="chip ${cur===val?"on":""}" data-action="set" data-field="${field}" data-val="${val}">${label}</button>`; }
@@ -97,9 +109,20 @@ function weatherGroup(sharedWith,showDerived){
   if(src==="wetBulb"){
     const b=bandByNum(S.band);
     wetExtras=`<div class="chiprow"><div class="lbl">Elevation band · ${b.p} inHg</div>
-      <div class="chips">${BANDS.map(x=>chip("band",x.n,x.l,S.band)).join("")}</div></div>`;
-    if(showDerived){ const rh=effectiveRH();
-      wetExtras+=`<div class="derived"><div><div class="lbl">Rel. humidity</div><div class="lbl" style="text-transform:none">computed from wet bulb</div></div><div class="big">${rh}%</div></div>`; }
+      <div class="chips">${BANDS.map(x=>chip("band",x.n,bandLabel(x,S.alaska),S.band)).join("")}</div></div>`;
+    if(showDerived){
+      // Everything the sling reading yields, read off where it was entered —
+      // this is the Humidity tab, absorbed. RH stays primary: it is the value
+      // that flows into the PIG chain.
+      const r=psychro(S.dryBulbF,S.wetBulbF,b.p);
+      wetExtras+=`<div class="chiprow"><label class="aktoggle"><input type="checkbox" data-action="toggleAlaska" ${S.alaska?"checked":""}> Alaska elevation thresholds</label></div>`;
+      wetExtras+=`<div class="derived"><div><div class="lbl">Rel. humidity</div><div class="lbl" style="text-transform:none">computed from wet bulb</div></div><div class="big">${r.rh}%</div></div>`;
+      wetExtras+=`<div class="row">
+        <div class="statcard"><div class="lbl">Dew point</div><div class="val"><span class="num">${r.dew}</span><span class="un">°F</span></div></div>
+        <div class="statcard"><div class="lbl">WB depression</div><div class="val"><span class="num">${r.dep}</span><span class="un">°F</span></div></div>
+      </div>`;
+      wetExtras+=`<div class="disc" style="text-align:left">Psychrometric estimate — verify against your belt weather kit tables.</div>`;
+    }
   }
   const wind=S.wind; let windExtra="";
   if(wind.high>0){
@@ -140,7 +163,7 @@ function renderIgnition(){
     </div></div>`;
   const body=`<div class="pad">
     <div class="titlerow"><span class="title">Ignition</span><span class="lbl">IRPG p.44–49</span></div>
-    ${weatherGroup("WATCH",true)}
+    ${weatherGroup("OBS",true)}
     <div class="group">
       <div class="sect"><span class="st">Calendar · Time · Tables B/C/D</span></div>
       <div class="chiprow"><div class="lbl">Month · ${g} (${groupMonths(g)})</div><div class="chips">${MONTHS.map((m,i)=>chip("month",i+1,m,S.month)).join("")}</div></div>
@@ -176,31 +199,34 @@ function renderIgnition(){
   return bar+body;
 }
 
-//====================== HUMIDITY tab ======================
-function renderHumidity(){
-  const bn=S.hBand; const band=bandByNum(bn);
-  const r=psychro(S.hDry,S.hWet,band.p);
-  return `<div class="pad">
-    <div class="titlerow"><span class="title">Humidity</span><span class="lbl">NWCG PMS 437</span></div>
-    <div style="text-align:center;padding:6px 0">
-      <div style="font-family:var(--round);font-weight:800;font-size:64px;color:var(--teal);font-variant-numeric:tabular-nums;line-height:1">${r.rh}<span style="font-size:28px">%</span></div>
-      <div class="lbl">Relative humidity</div>
-    </div>
-    <div class="row">${stepper("hDry","Dry bulb","°F",S.hDry,10,130)}${stepper("hWet","Wet bulb","°F",S.hWet,10,130)}</div>
-    <div class="row">
-      <div class="statcard"><div class="lbl">Dew point</div><div class="val"><span class="num">${r.dew}</span><span class="un">°F</span></div></div>
-      <div class="statcard"><div class="lbl">WB depression</div><div class="val"><span class="num">${r.dep}</span><span class="un">°F</span></div></div>
-    </div>
-    <div class="chiprow"><div class="lbl">Elevation band · ${band.p} inHg</div><div class="chips">${BANDS.map(x=>chip("hBand",x.n,x.l,bn)).join("")}</div></div>
-    <button class="btn primary" data-action="useInIgnition">Use in ignition calc (${r.rh}%)</button>
-    <div class="disc">Psychrometric estimate — verify against your belt weather kit tables.</div>
-  </div>`;
-}
-
 //====================== WATCH tab ======================
+// The month a log freezes comes from the shift's own date, NOT the month chips
+// on the Ignition tab. Those chips are a what-if surface — an operator
+// forecasting a late-season burn leaves them somewhere else entirely — and the
+// native twin has always derived the logged month from the observation's
+// timestamp (WeatherWatchModel.pendingObs). The web side used to freeze S.month,
+// so a manual override travelled straight into the record and the broadcast.
+function monthForLog(){ return new Date(S.shiftDateMs||Date.now()).getMonth()+1; }
+
 function pendingEstimate(){
   const tb=timeBandFromClock(Math.floor(S.pendingMin/60),S.pendingMin%60);
-  return estimate({dryBulbF:S.dryBulbF,rh:effectiveRH(),month:S.month,timeBand:tb,aspect:S.aspect,slope:S.slope,elevationDelta:S.elevationDelta});
+  return estimate({dryBulbF:S.dryBulbF,rh:effectiveRH(),month:monthForLog(),timeBand:tb,aspect:S.aspect,slope:S.slope,elevationDelta:S.elevationDelta});
+}
+
+// Everything a Log tap is about to freeze, in one line — built from the same
+// inputs logObs() uses, so it cannot describe a different reading. It exists
+// because the site factors are shared with the Ignition tab: an aspect scouted
+// mid-shift and never set back is what the next obs would freeze and broadcast.
+const SLOPE_LABEL={gentle:"0–30%",steep:"31%+"};
+const DELTA_LABEL={below:"Below",level:"Level",above:"Above"};
+function freezeReceipt(){
+  const tb=timeBandFromClock(Math.floor(S.pendingMin/60),S.pendingMin%60);
+  const parts=[S.dryBulbF+"°F", effectiveRH()+"% "+(S.rhSource==="wetBulb"?"sling":"direct")];
+  if(S.wind.high>0||S.wind.gust>0)parts.push(windSpot(S.wind));
+  parts.push(MONTHS[monthForLog()-1]);
+  parts.push(clockLabel(S.pendingMin)+" → "+(tb==="night"?"Night":TIMEBANDS[tb]));
+  parts.push(S.aspect, SLOPE_LABEL[S.slope], DELTA_LABEL[S.elevationDelta]+" elev");
+  return parts.join(" · ");
 }
 function nowMin(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
 function obsDueHtml(){
@@ -287,6 +313,18 @@ function renderWatch(){
         <button class="del" data-action="deleteObs" data-id="${o.id}">🗑</button></div>`).join("")}</div>`;
   }
 
+  // The IRPG corrections every logged obs freezes. They live on the shared
+  // state the Ignition tab edits, and until now this screen never showed them —
+  // while the gate below asked the operator to "review the site factors".
+  const siteFactorsHtml=`<div class="group">
+    <div class="sect"><span class="st">Site factors · Corrections</span><span class="shared">🔗 SHARED · IGNITION</span></div>
+    <div class="row">
+      <div class="chiprow"><div class="lbl">Aspect</div><div class="chips">${ASPECTS.map(a=>chip("aspect",a,a,S.aspect)).join("")}</div></div>
+      <div class="chiprow"><div class="lbl">Slope</div><div class="chips">${chip("slope","gentle","0–30%",S.slope)}${chip("slope","steep","31%+",S.slope)}</div></div>
+    </div>
+    <div class="chiprow"><div class="lbl">Elevation vs. weather site</div><div class="chips">${chip("elevationDelta","below","Below",S.elevationDelta)}${chip("elevationDelta","level","Level",S.elevationDelta)}${chip("elevationDelta","above","Above",S.elevationDelta)}</div></div>
+  </div>`;
+
   const siteHtml=`<div class="group"><div class="sect"><span class="st">Site &amp; radio · IMET header</span></div>
     ${gated
       ?`<div class="strip caution"><span>🛡</span><span>Review the site factors, then confirm</span><button data-action="confirmSite">Confirm site</button></div>`
@@ -301,19 +339,6 @@ function renderWatch(){
       <div class="field"><div class="lbl">Latitude</div><input data-field="coordLat" inputmode="decimal" value="${esc(S.coordLat)}" placeholder="38.214"></div>
       <div class="field"><div class="lbl">Longitude</div><input data-field="coordLon" inputmode="decimal" value="${esc(S.coordLon)}" placeholder="-112.398"></div>
     </div></div>`;
-
-  const captureHtml=`<div class="box group">
-    <div class="titlerow"><span class="lbl">Pending obs</span><span class="lbl" style="color:var(--teal)">→ PIG ${pend.unshaded.pig} / ${pend.shaded.pig}</span></div>
-    <div class="field"><div class="lbl">Obs time (tap to type)</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input data-field="obsTime" inputmode="numeric" value="${clockLabel(S.pendingMin)}" style="max-width:104px;font-family:var(--round);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums;text-align:center;border:1px solid var(--hair);border-radius:10px;padding:8px;background:var(--surface);color:var(--ink)">
-        <span style="flex:1"></span>
-        <button class="obsnudge" data-action="obsNudge" data-d="-5">−5m</button>
-        <button class="obsnudge" data-action="obsNudge" data-d="5">+5m</button>
-      </div></div>
-    ${weatherGroup("IGNITION",false)}
-    <div class="field"><div class="lbl">Note (optional)</div><textarea data-field="note" rows="2" placeholder="e.g. sun on thermometer">${esc(S.note)}</textarea></div>
-  </div>`;
 
   const hasData = obs.length || S.history.length;
   const days = retainedDayCount();
@@ -336,19 +361,51 @@ function renderWatch(){
   const body=`<div class="pad">
     <div class="titlerow"><span class="title">Obs</span><span class="lbl">${obs.length?obs.length+" obs this shift":"IRPG PMS 461"}</span></div>
     ${obsDueHtml()}
-    ${heroHtml}${broadcastHtml}${trendSectionHtml()}${logHtml}${siteHtml}${captureHtml}${exportHtml}${historyHtml}${newShiftHtml}
+    ${heroHtml}${broadcastHtml}${trendSectionHtml()}${logHtml}${siteFactorsHtml}${siteHtml}${exportHtml}${historyHtml}${newShiftHtml}
     <div class="disc">PIG is app-computed — not observed, not a forecast.</div>
   </div>`;
-  const logbar=`<div class="logbar"><button class="btn primary" data-action="logObs" ${gated?"disabled":""}>${gated?"Confirm site to log":"Log Observation · "+clockLabel(S.pendingMin)}</button></div>`;
+  const logbar=`<div class="logbar"><button class="btn primary" data-action="openCapture" ${gated?"disabled":""}>${gated?"Confirm site to log":"Log Observation"}</button></div>`;
+  return body+logbar+formSheetHtml(pend);
+}
 
-  let editHtml="";
-  if(S.editing!=null&&S.edit){
+// The observation form — one sheet, two modes (the twin of ObsFormSheet), plus
+// the post-log success state. Capture writes weather through to the shared
+// state (it IS the live reading); edit keeps its own copy so a correction never
+// moves the Ignition tab.
+function formSheetHtml(pend){
+  if(S.sheet==="logged"){
+    const o=S.obs.find(x=>x.id===S.loggedId);
+    if(!o){ return ""; }
+    return `<div class="modalwrap"><div class="modal">
+      <div class="strip good"><span>✓</span><span>Logged ${hhmm(o.min)} — read this over the net</span></div>
+      <div class="broadcast" style="font-size:17px;line-height:1.5">${esc(o.broadcast)}</div>
+      <div class="disc" style="text-align:left">PIG is app-computed — not observed, not a forecast.</div>
+      <div class="btnrow"><button class="btn ghost" data-action="copy" data-kind="broadcast">Copy script</button><button class="btn primary" data-action="closeSheet">Done</button></div>
+    </div></div>`;
+  }
+  if(S.sheet==="capture"){
+    return `<div class="modalwrap"><div class="modal">
+      <div class="titlerow"><span class="title" style="font-size:20px">New observation</span><span class="lbl" style="color:var(--teal)">→ PIG ${pend.unshaded.pig} / ${pend.shaded.pig}</span></div>
+      <div class="field"><div class="lbl">Obs time (tap to type)</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input data-field="obsTime" inputmode="numeric" value="${clockLabel(S.pendingMin)}" style="max-width:104px;font-family:var(--round);font-weight:700;font-size:22px;font-variant-numeric:tabular-nums;text-align:center;border:1px solid var(--hair);border-radius:10px;padding:8px;background:var(--surface);color:var(--ink)">
+          <span style="flex:1"></span>
+          <button class="obsnudge" data-action="obsNudge" data-d="-5">−5m</button>
+          <button class="obsnudge" data-action="obsNudge" data-d="5">+5m</button>
+        </div></div>
+      ${weatherGroup("IGNITION",false)}
+      <div class="field"><div class="lbl">Note (optional)</div><textarea data-field="note" rows="2" placeholder="e.g. sun on thermometer">${esc(S.note)}</textarea></div>
+      <div class="receipt"><span class="lbl">Freezes</span> <span id="freeze-receipt">${esc(freezeReceipt())}</span></div>
+      <div class="btnrow"><button class="btn ghost" data-action="closeSheet">Cancel</button><button class="btn primary" data-action="logObs">Log Observation · ${clockLabel(S.pendingMin)}</button></div>
+    </div></div>`;
+  }
+  if(S.sheet==="edit"&&S.edit){
     const ed=S.edit;
     const windExtra = ed.wind.high>0
       ? stepper("editGust","Gust","mph",ed.wind.gust,0,80,1,"sunkbg")
         +`<div class="chiprow"><div class="lbl">Wind from</div><div class="chips">${DIRS.map(d=>chip("editDir",d,d,ed.wind.dir)).join("")}</div></div>`
       : "";
-    editHtml=`<div class="modalwrap"><div class="modal">
+    return `<div class="modalwrap"><div class="modal">
       <div class="titlerow"><span class="title" style="font-size:20px">Edit observation</span></div>
       <div class="lbl" style="text-transform:none;letter-spacing:0;line-height:1.4">Correcting the ${hhmm(ed.origMin)} reading — recomputes PIG. Neighboring broadcasts are unchanged.</div>
       <div class="field"><div class="lbl">Obs time (tap to type)</div>
@@ -365,7 +422,7 @@ function renderWatch(){
       <div class="btnrow"><button class="btn ghost" data-action="editCancel">Cancel</button><button class="btn primary" data-action="editSave">Save</button></div>
     </div></div>`;
   }
-  return body+logbar+editHtml;
+  return "";
 }
 
 //====================== Broadcast + export text ======================
@@ -399,13 +456,14 @@ function downloadXlsx(){
 //====================== Actions ======================
 function logObs(){
   const tb=timeBandFromClock(Math.floor(S.pendingMin/60),S.pendingMin%60);
-  const e=estimate({dryBulbF:S.dryBulbF,rh:effectiveRH(),month:S.month,timeBand:tb,aspect:S.aspect,slope:S.slope,elevationDelta:S.elevationDelta});
+  const e=estimate({dryBulbF:S.dryBulbF,rh:effectiveRH(),month:monthForLog(),timeBand:tb,aspect:S.aspect,slope:S.slope,elevationDelta:S.elevationDelta});
   const prev=S.obs.slice().sort((a,b)=>a.min-b.min).filter(o=>o.min<S.pendingMin).pop()||null;
   const o={id:obsSeq++,min:S.pendingMin,temp:S.dryBulbF,rh:effectiveRH(),pigU:e.unshaded.pig,pigS:e.shaded.pig,ffmU:e.unshaded.ffm,ffmS:e.shaded.ffm,bu:e.unshaded.b,bs:e.shaded.b,
-    wind:Object.assign({},S.wind),note:S.note.trim(),month:S.month,elevationDelta:S.elevationDelta,elevationFeet:S.siteElevationFeet,aspect:S.aspect,slope:S.slope,spokenLocation:S.locationName.trim()};
+    wind:Object.assign({},S.wind),note:S.note.trim(),month:monthForLog(),elevationDelta:S.elevationDelta,elevationFeet:S.siteElevationFeet,aspect:S.aspect,slope:S.slope,spokenLocation:S.locationName.trim()};
   o.broadcast=renderBroadcast(o,prev);
   S.obs.push(o); S.note=""; S.undo=false;
-  S.pendingMin=(o.min+60)%1440;   // pre-fill the next hourly slot
+  // Show the frozen script — the thing needed on the radio right now.
+  S.sheet="logged"; S.loggedId=o.id;
   render();
 }
 // Correct a logged obs in place — recompute PIG against its OWN frozen month /
@@ -421,7 +479,7 @@ function editSave(){
   o.pigU=e.unshaded.pig; o.pigS=e.shaded.pig; o.ffmU=e.unshaded.ffm; o.ffmS=e.shaded.ffm; o.bu=e.unshaded.b; o.bs=e.shaded.b;
   const prev=S.obs.slice().sort((a,b)=>a.min-b.min).filter(x=>x.min<o.min&&x.id!==o.id).pop()||null;
   o.broadcast=renderBroadcast(o,prev);
-  S.editing=null; S.edit=null; render(); toast("Observation updated");
+  S.editing=null; S.edit=null; S.sheet=null; render(); toast("Observation updated");
 }
 async function copyText(t){ try{ await navigator.clipboard.writeText(t); toast("Copied to clipboard"); }catch(e){ toast("Copy blocked — select & copy manually"); } }
 function toast(msg,withUndo){
@@ -434,7 +492,7 @@ function toast(msg,withUndo){
 function render(){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("on",t.dataset.val===S.tab));
   const s=scr(); const top=s.scrollTop;
-  s.innerHTML = S.tab==="ignition"?renderIgnition():S.tab==="humidity"?renderHumidity():renderWatch();
+  s.innerHTML = S.tab==="ignition"?renderIgnition():renderWatch();
   s.scrollTop=top;
   saveState();
 }
@@ -462,28 +520,33 @@ document.addEventListener("click",ev=>{
     else if(f==="editGust"){ if(S.edit){ S.edit.wind.gust=Math.min(mx,Math.max(mn,S.edit.wind.gust+d)); } }
     else if(f==="pendingHour"){ S.pendingMin=Math.min(23*60+ S.pendingMin%60, Math.max(0, S.pendingMin + d*60)); }
     else if(f==="pendingMinute"){ const h=Math.floor(S.pendingMin/60); let m=S.pendingMin%60+d; m=Math.min(55,Math.max(0,m)); S.pendingMin=h*60+m; }
-    else if(f.startsWith("h")){ stepH(f,d,mn,mx); return; }
     else { stepField(f,d,mn,mx); return; }
     render();
   }
   else if(a==="resumeClock"){ S.clockOverridden=false; const d=new Date(); S.month=d.getMonth()+1; S.timeBand=timeBandFromClock(d.getHours(),d.getMinutes()); render(); }
-  else if(a==="useInIgnition"){ const band=bandByNum(S.hBand); const r=psychro(S.hDry,S.hWet,band.p);
-    S.rhSource="direct"; S.relativeHumidity=r.rh; S.tab="ignition"; scr().scrollTop=0; render(); toast("RH "+r.rh+"% → Ignition"); }
+  else if(a==="toggleAlaska"){ S.alaska=!S.alaska; render(); }
+  else if(a==="openCapture"){
+    // Seed the obs time from the clock each time the form opens — a sheet is
+    // short-lived, so there is no stale stamp to inherit.
+    S.pendingMin=nowMin(); S.sheet="capture"; render();
+  }
+  else if(a==="closeSheet"){ S.sheet=null; S.loggedId=null; render(); }
   else if(a==="obsNudge"){ S.pendingMin=Math.min(1439,Math.max(0,S.pendingMin+parseInt(b.dataset.d,10))); render(); }
   else if(a==="setTrend"){ S.trendMetric=b.dataset.k; render(); }
   else if(a==="confirmSite"){ S.siteConfirmed=true; render(); }
   else if(a==="logObs"){ logObs(); }
   else if(a==="deleteObs"){ const id=parseInt(b.dataset.id,10); const i=S.obs.findIndex(o=>o.id===id); if(i>=0){ S.lastRemoved=S.obs[i]; S.obs.splice(i,1); S.undo=true; } render(); }
   else if(a==="editObs"){ const id=parseInt(b.dataset.id,10); const o=S.obs.find(x=>x.id===id);
-    if(o){ S.editing=id; S.edit={origMin:o.min,min:o.min,temp:o.temp,rh:o.rh,wind:Object.assign({low:0,high:0,dir:"N",gust:0},o.wind),note:o.note||""}; } render(); }
-  else if(a==="editCancel"){ S.editing=null; S.edit=null; render(); }
+    if(o){ S.editing=id; S.sheet="edit"; S.edit={origMin:o.min,min:o.min,temp:o.temp,rh:o.rh,wind:Object.assign({low:0,high:0,dir:"N",gust:0},o.wind),note:o.note||""}; } render(); }
+  else if(a==="editCancel"){ S.editing=null; S.edit=null; S.sheet=null; render(); }
   else if(a==="editNudge"){ if(S.edit){ S.edit.min=Math.min(1439,Math.max(0,S.edit.min+parseInt(b.dataset.d,10))); } render(); }
   else if(a==="editSave"){ editSave(); }
   else if(a==="undo"){ if(S.lastRemoved){ S.obs.push(S.lastRemoved); S.lastRemoved=null; S.undo=false; } render(); }
   else if(a==="newShift"){
     if(!confirm("Start a new shift? This shift is saved to History; the new shift starts empty."))return;
     if(S.obs.length)S.history.unshift({obs:S.obs,division:S.division,locationName:S.locationName,dateMs:S.shiftDateMs});
-    S.obs=[]; S.shiftDateMs=Date.now(); S.siteConfirmed=false; S.lastRemoved=null; S.undo=false; render();
+    S.obs=[]; S.shiftDateMs=Date.now(); S.siteConfirmed=false; S.lastRemoved=null; S.undo=false;
+    S.note=""; S.sheet=null; S.loggedId=null; render();
   }
   else if(a==="clearHistory"){ if(!S.history.length)return;
     if(!confirm(`Clear all ${S.history.length} retained day${S.history.length===1?"":"s"}? Export the spreadsheet first if you still need them.`))return;
@@ -515,5 +578,7 @@ document.getElementById("clock").textContent=clockLabel(now.getHours()*60+now.ge
 window.addEventListener("pagehide", saveState);
 document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="hidden") saveState(); });
 // live "next obs due" countdown — re-render the Obs tab every 30s unless typing
-setInterval(()=>{ if(S.tab==="watch" && !(document.activeElement&&["INPUT","TEXTAREA"].includes(document.activeElement.tagName))) render(); },30000);
+// (skipped while a form is open — a re-render mid-entry would rebuild the sheet
+// under the operator's hands)
+setInterval(()=>{ if(S.tab==="watch" && !S.sheet && !(document.activeElement&&["INPUT","TEXTAREA"].includes(document.activeElement.tagName))) render(); },30000);
 render();

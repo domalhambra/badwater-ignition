@@ -215,6 +215,16 @@ struct ObsFormSheet: View {
 
     // MARK: - The form
 
+    /// The form scrolls as one piece, commit included — deliberately *not* a
+    /// pinned bottom bar.
+    ///
+    /// Two reasons. The receipt has to be read before the freeze, and a pinned
+    /// button can be tapped from the top of the form without the operator ever
+    /// reaching it; ending the scroll with receipt-then-button means you cannot
+    /// commit without passing the thing you are meant to check. And a bottom
+    /// `safeAreaInset` inside this sheet does not surface its contents to
+    /// XCUITest at all, so a pinned bar would also be a bar no test can prove
+    /// is there — on the one screen in the app that freezes a reading.
     private var form: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metric.cardSpacing) {
@@ -225,10 +235,10 @@ struct ObsFormSheet: View {
                 futureTimeStrip
                 weatherSection
                 noteField
+                if isCapture { receiptRow; commitButton }
             }
             .padding(Metric.screenPadding)
         }
-        .safeAreaInset(edge: .bottom) { if isCapture { captureBar } }
         .accessibilityIdentifier(isCapture ? "capture-sheet" : "edit-sheet")
     }
 
@@ -338,47 +348,40 @@ struct ObsFormSheet: View {
 
     // MARK: - Commit
 
-    /// The receipt and the button that acts on it. The receipt sits directly
-    /// above the commit so the values it names are the last thing read before the
-    /// freeze — see ``WeatherWatchModel/freezeReceipt(at:wind:calendar:)``.
-    private var captureBar: some View {
+    /// Everything the commit will freeze, immediately above the button that does
+    /// it — see ``WeatherWatchModel/freezeReceipt(at:wind:calendar:)``.
+    private var receiptRow: some View {
         let receipt = model.freezeReceipt(at: time, wind: ignition.wind)
-        return VStack(spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("FREEZES").fieldLabel()
-                // The identifier and the spoken label sit on the Text itself
-                // rather than on a synthesized container element: a
-                // `.accessibilityElement(children: .ignore)` wrapper here — in
-                // the sheet's bottom safe-area inset — did not surface to
-                // XCUITest at all, while a plain labelled Text does.
-                Text(receipt.display)
-                    .font(PlateworksFont.labelSmall)
-                    .foregroundStyle(PlateworksColor.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("freeze-receipt")
-                    .accessibilityLabel(receipt.spoken)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button { commit() } label: {
-                HStack(spacing: 10) {
-                    Text("Log Observation")
-                        .font(.system(size: 17, weight: .bold, design: .rounded))
-                    Text("· \(formatHourMinute(time))")
-                        .font(PlateworksFont.label).monospacedDigit().opacity(0.85)
-                }
-                .frame(maxWidth: .infinity, minHeight: 56)
-                .background(PlateworksColor.accent, in: RoundedRectangle(cornerRadius: 16))
-                .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("log-observation")
+        return VStack(alignment: .leading, spacing: 3) {
+            Text("Freezes").fieldLabel()
+            Text(receipt.display)
+                .font(PlateworksFont.labelSmall)
+                .foregroundStyle(PlateworksColor.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("freeze-receipt")
+                .accessibilityLabel(receipt.spoken)
         }
-        .padding(.horizontal, Metric.screenPadding)
-        .padding(.top, 10).padding(.bottom, 8)
-        .background(PlateworksColor.surface)
-        .overlay(alignment: .top) { PlateworksColor.hairline.frame(height: 1) }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(PlateworksColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PlateworksColor.hairline))
+    }
+
+    private var commitButton: some View {
+        Button { commit() } label: {
+            HStack(spacing: 10) {
+                Text("Log Observation")
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                Text("· \(formatHourMinute(time))")
+                    .font(PlateworksFont.label).monospacedDigit().opacity(0.85)
+            }
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .background(PlateworksColor.accent, in: RoundedRectangle(cornerRadius: 16))
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("log-observation")
     }
 
     private func commit() {
@@ -434,29 +437,25 @@ struct ObsFormSheet: View {
                     .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius)
                         .strokeBorder(PlateworksColor.hairline))
                     .accessibilityIdentifier("broadcast-success")
+                // In the scroll, not a bottom inset — same reason as the form's
+                // commit: inset contents don't surface to XCUITest here.
+                Button { copyToPasteboard(model.broadcastScript(for: obs)) } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.on.doc")
+                        Text("Copy script").font(PlateworksFont.body.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity, minHeight: Metric.tapTarget)
+                    .background(PlateworksColor.surface, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(PlateworksColor.accent, lineWidth: 1.5))
+                    .foregroundStyle(PlateworksColor.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("copy-broadcast-success")
                 Text("PIG is app-computed — not observed, not a forecast.")
                     .font(PlateworksFont.labelSmall).foregroundStyle(PlateworksColor.muted)
             }
             .padding(Metric.screenPadding)
-        }
-        .safeAreaInset(edge: .bottom) {
-            Button { copyToPasteboard(model.broadcastScript(for: obs)) } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.on.doc")
-                    Text("Copy script").font(PlateworksFont.body.weight(.semibold))
-                }
-                .frame(maxWidth: .infinity, minHeight: Metric.tapTarget)
-                .background(PlateworksColor.surface, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(PlateworksColor.accent, lineWidth: 1.5))
-                .foregroundStyle(PlateworksColor.accent)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("copy-broadcast-success")
-            .padding(.horizontal, Metric.screenPadding)
-            .padding(.top, 10).padding(.bottom, 8)
-            .background(PlateworksColor.surface)
-            .overlay(alignment: .top) { PlateworksColor.hairline.frame(height: 1) }
         }
     }
 }

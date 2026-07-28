@@ -91,7 +91,11 @@ function psychro(dryF,wetF,pInHg){
   const ratio=Math.log(vp/6.112); const dewC=(243.5*ratio)/(17.67-ratio);
   return {rh:Math.round(rh),dew:Math.round(c2f(dewC)),dep:Math.round(dryF-wet)};
 }
-const BANDS=[{n:1,p:30,l:"0–500 ft"},{n:2,p:29,l:"501–1,900 ft"},{n:3,p:27,l:"1,901–3,900 ft"},{n:4,p:25,l:"3,901–6,100 ft"},{n:5,p:23,l:"6,101–8,500 ft"},{n:6,p:21,l:"8,501–11,000  ft"}];
+// `l` = contiguous-U.S. elevation range, `al` = the shifted Alaska range —
+// ElevationBand.conusLabel / .alaskaLabel. Labels only: the psychrometrics take
+// the band (and therefore `p`), so the Alaska toggle never changes arithmetic.
+const BANDS=[{n:1,p:30,l:"0–500 ft",al:"0–300 ft"},{n:2,p:29,l:"501–1,900 ft",al:"301–1,700 ft"},{n:3,p:27,l:"1,901–3,900 ft",al:"1,701–3,600 ft"},{n:4,p:25,l:"3,901–6,100 ft",al:"3,601–5,700 ft"},{n:5,p:23,l:"6,101–8,500 ft",al:"5,701–7,900 ft"},{n:6,p:21,l:"8,501–11,000 ft",al:"above 7,900 ft"}];
+function bandLabel(b,ak){ return ak?b.al:b.l; }
 function bandByNum(n){ return BANDS.find(b=>b.n===n)||BANDS[2]; }
 function bandForElev(feet,ak){
   if(ak){ if(feet<301)return 1; if(feet<=1700)return 2; if(feet<=3600)return 3; if(feet<=5700)return 4; if(feet<=7900)return 5; return 6; }
@@ -258,7 +262,7 @@ const PlateworksEngine={
   PIG_U,PIG_S,pigTempRow,pigFfmCol,pig,
   BEHAV,CAUTION,behavior,
   monthGroup,MONTHS,groupMonths,TIMEBANDS,timeBandFromClock,
-  INHG_HPA,esat,psychro,BANDS,bandByNum,bandForElev,
+  INHG_HPA,esat,psychro,BANDS,bandByNum,bandForElev,bandLabel,
   DIRNAME,DIRS,windRendered,windSpot,windSpoken,windImet,
   estimate,hhmm,grouped,dateCode,dateSlash,
   broadcastScript,delta,

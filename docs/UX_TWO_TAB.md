@@ -345,6 +345,17 @@ to 1559, south aspect, steep slope, level elevation."* New identifier:
 > **Decision:** a one-line, fixed-height receipt above the commit button,
 > enumerating every frozen input; scout mode deferred.
 
+**As built — the commit scrolls with the form.** The receipt and the Log
+button are the last two items in the sheet's scroll rather than a pinned bottom
+bar. Two reasons, one of them better than the original design: a pinned button
+can be tapped from the top of the form without the operator ever reaching the
+receipt, whereas ending the scroll with receipt-then-button means a reading
+cannot be frozen without passing the summary of what will be frozen. The second
+reason is mechanical — a bottom `safeAreaInset` inside this sheet does not
+surface its contents to XCUITest at all, so a pinned bar would also be a bar no
+test can prove is present, on the one screen in the app that freezes a reading.
+The same applies to the post-log screen's Copy action.
+
 ---
 
 ## 9. Spec F — The broadcast is the success screen

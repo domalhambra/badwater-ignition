@@ -1,6 +1,6 @@
 import XCTest
 
-/// Black-box UI smoke tests: navigation, the RH → Ignition hand-off, and the
+/// Black-box UI smoke tests: navigation, the wet-bulb sling readout, and the
 /// Obs capture/log loop, driven through the accessibility identifiers set on the
 /// controls.
 ///
@@ -50,17 +50,16 @@ final class PlateworksIgnitionUITests: XCTestCase {
                       "Calculation chain strip missing on launch")
     }
 
-    func testHumidityTabAndHandoff() {
+    /// The shell is two tabs. A third would mean a screen came back without its
+    /// spec — most likely a re-split of the humidity calculation the weather
+    /// group now owns (`docs/UX_TWO_TAB.md` §4).
+    func testShellHasExactlyTwoTabs() {
         let app = launchApp()
-
-        app.tabBars.buttons["Humidity"].tap()
-        XCTAssertTrue(app.element("rh-readout").waitForExistence(timeout: 10),
-                      "RH readout missing on the Humidity tab")
-
-        // "Use in ignition calc" pushes RH into the Ignition tab and switches to it.
-        app.element("use-in-ignition").tap()
-        XCTAssertTrue(app.element("result-Unshaded").waitForExistence(timeout: 10),
-                      "Hand-off did not land on the Ignition tab")
+        XCTAssertTrue(app.tabBars.buttons["Ignition"].waitForExistence(timeout: 10),
+                      "Ignition tab missing")
+        XCTAssertTrue(app.tabBars.buttons["Obs"].exists, "Obs tab missing")
+        XCTAssertEqual(app.tabBars.buttons.count, 2,
+                       "Expected exactly two tabs — Ignition and Obs")
     }
 
     func testDryBulbIsAdjustable() {
@@ -73,18 +72,33 @@ final class PlateworksIgnitionUITests: XCTestCase {
                       "PIG result stopped rendering after adjusting dry bulb")
     }
 
-    func testWetBulbSourceRevealsWetBulbInput() {
+    /// Wet-bulb mode is where the absorbed Humidity screen lives: the wet-bulb
+    /// stepper plus everything a sling reading yields — RH, dew point, wet-bulb
+    /// depression — and the Alaska threshold switch. Direct mode shows none of
+    /// it, which is what keeps the everyday screen short.
+    func testWetBulbSourceRevealsTheFullSlingReading() {
         let app = launchApp()
-        // Switching the humidity source to "From wet bulb" reveals the wet-bulb
-        // stepper; the PIG results keep rendering with the derived RH.
+        // Direct mode (the launch default) carries none of the sling extras.
+        XCTAssertFalse(app.element("derived-rh").exists,
+                       "Derived RH showing in direct mode")
+        XCTAssertFalse(app.element("alaska-toggle").exists,
+                       "Alaska toggle showing in direct mode")
+
         let wetBulbSource = app.element("From wet bulb")
         XCTAssertTrue(wetBulbSource.waitForExistence(timeout: 10),
                       "Humidity source chip missing")
         wetBulbSource.tap()
+
         XCTAssertTrue(app.element("Wet bulb").waitForExistence(timeout: 10),
                       "Wet bulb stepper did not appear")
         XCTAssertTrue(app.element("derived-rh").exists,
-                      "Derived RH card did not appear in wet-bulb mode")
+                      "Derived RH did not appear in wet-bulb mode")
+        XCTAssertTrue(app.element("Dew point").exists,
+                      "Dew point missing — it moved here from the Humidity tab")
+        XCTAssertTrue(app.element("WB depression").exists,
+                      "Wet-bulb depression missing — it moved here from the Humidity tab")
+        XCTAssertTrue(app.element("alaska-toggle").exists,
+                      "Alaska thresholds toggle missing in wet-bulb mode")
         XCTAssertTrue(app.element("result-Unshaded").exists,
                       "PIG result stopped rendering in wet-bulb mode")
     }

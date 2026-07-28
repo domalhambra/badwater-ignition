@@ -11,12 +11,18 @@ precedes any PR here.
 
 | PR | Contents | State |
 |---|---|---|
-| 1 | Shell + Humidity merge (native) | Not started |
+| 1 | Shell + Humidity merge (native) | **In review** |
 | 2 | Obs loop — sheet, receipt, success screen, site factors (native) | Not started |
 | 3 | Web twin + month-freeze parity fix | Not started |
 | 4 | Docs — CLAUDE.md guardrail, `DESIGN.md` §4, README, App Store copy | Not started |
 
 Book mode (spec §10) is **not in this plan** — it gets its own spec first.
+
+The four slices are landing as sequential commits on one review branch rather
+than four separate branches, so "PR" below reads as "reviewable slice". The
+ordering constraints are what matter and they hold either way; the
+`DESIGN.md` / `CLAUDE.md` copy in slice 4 still lands last, after the code it
+describes.
 
 ---
 

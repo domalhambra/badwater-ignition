@@ -29,6 +29,11 @@ final class IgnitionModel {
     var wetBulbF: Int { didSet { clampWet(); touchWeather(); persist() } }
     /// Elevation band supplying the station pressure for the RH derivation.
     var elevationBand: ElevationBand { didSet { persist() } }
+    /// Use the Alaska elevation thresholds when labelling the bands. Purely a
+    /// labelling control — ``Psychrometrics/compute(dryBulbF:wetBulbF:band:)``
+    /// takes the band directly — so it changes which elevations a crew reads
+    /// against, never the arithmetic.
+    var alaska: Bool { didSet { persist() } }
     /// Whether RH is typed directly or derived from the wet bulb.
     var rhSource: RHSource { didSet { touchWeather(); persist() } }
     var month: Int { didSet { markClockOverridden(); persist() } }
@@ -77,6 +82,14 @@ final class IgnitionModel {
         wetBulbF = store.object(forKey: Keys.wetBulb) as? Int ?? 60
         elevationBand = ElevationBand(rawValue: store.object(forKey: Keys.band) as? Int ?? 3) ?? .band3
         rhSource = RHSource(rawValue: store.string(forKey: Keys.rhSource) ?? "") ?? .direct
+        // Alaska thresholds moved here from the deleted Humidity screen. Its key
+        // is read once as a fallback so a crew working Alaska doesn't silently
+        // lose the setting to a restructure — `object(forKey:)` rather than
+        // `bool(forKey:)`, since the latter can't tell "set to false" from
+        // "never set" and would swallow the migration.
+        alaska = store.object(forKey: Keys.alaska) as? Bool
+            ?? store.object(forKey: LegacyKeys.humidityAlaska) as? Bool
+            ?? false
         // Observed wind (recorded for the Watch outputs; not part of the PIG calc).
         // Migrate the pre-range single speed (`ignition.windSpeedMPH`) into both ends.
         let legacyWind = store.object(forKey: "ignition.windSpeedMPH") as? Int
@@ -154,6 +167,19 @@ final class IgnitionModel {
         store.set(now.timeIntervalSince1970, forKey: Keys.weatherEdited)
     }
 
+    /// The full psychrometric result in wet-bulb mode — relative humidity, dew
+    /// point, and wet-bulb depression from one ``Psychrometrics/compute(dryBulbF:wetBulbF:band:)``
+    /// call, so the three readouts can never disagree about the reading they
+    /// came from.
+    ///
+    /// Nil in direct mode on purpose: a typed RH carries no wet bulb, so it has
+    /// no dew point or depression, and deriving them from a back-solved wet bulb
+    /// would present arithmetic as a measurement.
+    var derivedHumidity: HumidityResult? {
+        guard rhSource == .wetBulb else { return nil }
+        return Psychrometrics.compute(dryBulbF: dryBulbF, wetBulbF: wetBulbF, band: elevationBand)
+    }
+
     /// The relative humidity actually used by the calculation: typed directly
     /// (``RHSource/direct``), or derived from the wet bulb via the NWCG
     /// psychrometric method (``RHSource/wetBulb``).
@@ -162,9 +188,25 @@ final class IgnitionModel {
         case .direct:
             return relativeHumidity
         case .wetBulb:
-            return Psychrometrics.compute(dryBulbF: dryBulbF, wetBulbF: wetBulbF, band: elevationBand)
-                .relativeHumidity
+            return derivedHumidity?.relativeHumidity ?? relativeHumidity
         }
+    }
+
+    /// Elevation-band label under a given threshold set.
+    ///
+    /// `nonisolated` and static because the band chip row *stores* its label
+    /// closure and calls it outside this model's actor context — a closure that
+    /// reached back into main-actor state would not compile under Swift 6. The
+    /// rule lives here once; ``label(for:)`` is the convenient instance form.
+    nonisolated static func bandLabel(_ band: ElevationBand, alaska: Bool) -> String {
+        alaska ? band.alaskaLabel : band.conusLabel
+    }
+
+    /// Elevation-band label, respecting the Alaska thresholds toggle. The band
+    /// picker labels every option through this rule, so flipping the toggle
+    /// relabels the row wherever it renders.
+    func label(for band: ElevationBand) -> String {
+        Self.bandLabel(band, alaska: alaska)
     }
 
     /// The live estimate for the current inputs (both shaded and unshaded).
@@ -196,13 +238,6 @@ final class IgnitionModel {
         return .measured(Wind.SpeedRange(low: windSpeedLow, high: windSpeedHigh), windDirection, gust: gust)
     }
 
-    /// Seed RH coming from the Humidity screen ("Use in ignition calc"). The
-    /// pushed value is a concrete percentage, so it lands as a direct entry.
-    func applyHumidity(_ rh: Int) {
-        rhSource = .direct
-        relativeHumidity = min(max(rh, 0), 100)
-    }
-
     /// The wet bulb cannot read hotter than the dry bulb.
     private func clampWet() { if wetBulbF > dryBulbF { wetBulbF = dryBulbF } }
 
@@ -213,6 +248,7 @@ final class IgnitionModel {
         store.set(wetBulbF, forKey: Keys.wetBulb)
         store.set(elevationBand.rawValue, forKey: Keys.band)
         store.set(rhSource.rawValue, forKey: Keys.rhSource)
+        store.set(alaska, forKey: Keys.alaska)
         store.set(aspect.rawValue, forKey: Keys.aspect)
         store.set(slope.rawValue, forKey: Keys.slope)
         store.set(elevationDelta.rawValue, forKey: Keys.elevation)
@@ -228,6 +264,7 @@ final class IgnitionModel {
         static let wetBulb = "ignition.wetBulbF"
         static let band = "ignition.elevationBand"
         static let rhSource = "ignition.rhSource"
+        static let alaska = "ignition.alaska"
         static let aspect = "ignition.aspect"
         static let slope = "ignition.slope"
         static let elevation = "ignition.elevationDelta"
@@ -237,6 +274,12 @@ final class IgnitionModel {
         static let windGust = "ignition.windGustMPH"
         static let weatherEdited = "ignition.weatherEditedAt"
         static let weatherConfirmed = "ignition.weatherConfirmedAt"
+    }
+
+    /// Keys owned by screens that no longer exist, read once so their settings
+    /// survive the restructure. Never written back.
+    private enum LegacyKeys {
+        static let humidityAlaska = "humidity.alaska"
     }
 }
 

@@ -7,7 +7,7 @@ Operator manual for Claude. Human entry point is `README.md`; project vision, st
 A fast, offline field calculator for wildland firefighters: **Probability of Ignition (PIG)**, **Fine Fuel Moisture (FFM)**, and **relative humidity**, computed cell-for-cell from the NWCG *Incident Response Pocket Guide* (IRPG, PMS 461) and belt-weather-kit tables. It ships twice from one repo:
 
 - a **native SwiftUI app** (iOS/macOS) in `App/PlateworksIgnition/` — in development toward an App Store release, and
-- a **static, offline-first web PWA** in `web/`, live at **ignition.plateworks.org** (the legacy `badwater.guide` hosts are mid-cutover; see Deploy & hosting).
+- a **static, offline-first web PWA** in `web/`, live at **ignition.plateworks.org**.
 
 This is the only **safety-relevant** Badwater property. A wrong PIG on either platform is exactly the bug this repo exists to prevent, so fidelity to the printed guide is non-negotiable and correctness discipline (below) is not optional.
 
@@ -58,11 +58,10 @@ The `web/` app has **no build step** and no dependencies — it's static files s
 
 ## Deploy & hosting
 
-**Mid-cutover as of 2026-07-28** (Plateworks migration, Phase 2). Two Netlify sites serve this repo:
-
-- **Live app:** the **`plateworks-ignition`** Netlify site serves **`ignition.plateworks.org`** (canonical; `obs.plateworks.org` is an alias). Pushing to `main` auto-deploys `web/` (base directory `web/`, no build command). There is no manual deploy step. Proxied CNAMEs in the `plateworks.org` Cloudflare zone.
-- **Tombstone:** the legacy **`badwater-ignition`** site is pinned to the **`tombstone` branch** and serves `ignition.badwater.guide` / `obs.badwater.guide` — a service worker that self-destructs installed PWAs and sends them to the new host. **Never merge `tombstone` into `main`**, and never repoint that site back to `main`. After ≥48h dwell (start: 2026-07-28T03:19:30Z) the legacy hosts get Cloudflare 301s and the site is decommissioned (migration plan Task 5, gated on real-device confirmation).
+- **Continuous deploy:** the web app is a **git-connected Netlify site** (`plateworks-ignition`). Pushing to `main` auto-deploys `web/` (base directory `web/`, no build command). There is no manual deploy step.
 - **When you change any cached web asset, bump `CACHE` in `web/sw.js`** (currently `badwater-ignition-v4` → `-v5`, …) or field devices keep serving the old app offline.
+- **Domain:** `ignition.plateworks.org` (canonical). `obs.plateworks.org` is a domain alias that **301-redirects** (rule in `web/netlify.toml`). Proxied CNAMEs → `plateworks-ignition.netlify.app` in the `plateworks.org` Cloudflare zone.
+- **Legacy hosts** `ignition.badwater.guide` / `obs.badwater.guide` 301 to the canonical host via a Cloudflare redirect rule in the `badwater.guide` zone (cutover 2026-07-28, migration Phase 2; the 48h tombstone dwell was waived — the app was pre-launch with no installed users). Their DNS points at a proxied dummy (`A 192.0.2.1`); the old `badwater-ignition` Netlify site is deleted. The `tombstone` branch remains in the repo as the record of the cutover; it serves nothing and must never be merged.
 - GitHub: `domalhambra/badwater-ignition`.
 
 ## Guardrails

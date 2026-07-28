@@ -85,7 +85,7 @@ jobs:
           claude_args: --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
           prompt: |
             You are the web-parity agent for this repository. The iOS app
-            (SwiftUI over Sources/BadwaterCore) is the source of truth; the
+            (SwiftUI over Sources/PlateworksCore) is the source of truth; the
             static PWA in web/ (deployed to ignition.badwater.guide via Netlify)
             must stay at feature parity. Read docs/PARITY.md first.
 
@@ -104,7 +104,7 @@ jobs:
                open a PR. Print a one-paragraph justification instead.
             3. Otherwise port the change to the web app:
                - Calculation/logic/text-output changes -> web/engine.js
-                 (mirror BadwaterCore exactly; the conformance vectors in
+                 (mirror PlateworksCore exactly; the conformance vectors in
                  conformance/vectors.json pin the expected behavior).
                - UI/feature changes -> web/app.js (and web/index.html if
                  markup/styles are involved), following the app's existing

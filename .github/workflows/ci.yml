@@ -7,7 +7,7 @@ on:
 
 jobs:
   core-tests:
-    name: BadwaterCore (Linux)
+    name: PlateworksCore (Linux)
     runs-on: ubuntu-latest
     container: swift:6.1
     steps:
@@ -18,12 +18,12 @@ jobs:
         run: swift test
       # The committed conformance vectors must match the core they were
       # generated from. If this fails, a core change landed without
-      # `swift run badwater-vectors --out conformance/vectors.json`.
+      # `swift run plateworks-vectors --out conformance/vectors.json`.
       - name: Conformance vectors are fresh
-        run: swift run badwater-vectors --check conformance/vectors.json
+        run: swift run plateworks-vectors --check conformance/vectors.json
 
   # The SwiftUI app target had no CI at all until this job: `App/` was never
-  # compiled and BadwaterIgnitionTests / BadwaterIgnitionUITests never ran, so a
+  # compiled and PlateworksIgnitionTests / PlateworksIgnitionUITests never ran, so a
   # break in the presentation layer (or in the `canImport(AppKit)` macOS branches,
   # which no one builds day to day) reached `main` unnoticed. This gate compiles
   # both destinations and runs both app test bundles.
@@ -45,7 +45,7 @@ jobs:
       - name: Install XcodeGen + xcbeautify
         run: brew install xcodegen xcbeautify
 
-      # BadwaterIgnition.xcodeproj is generated, not committed (see project.yml).
+      # PlateworksIgnition.xcodeproj is generated, not committed (see project.yml).
       - name: Generate Xcode project
         run: xcodegen generate
 
@@ -73,8 +73,8 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild build \
-            -project BadwaterIgnition.xcodeproj \
-            -scheme BadwaterIgnition \
+            -project PlateworksIgnition.xcodeproj \
+            -scheme PlateworksIgnition \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             | xcbeautify
@@ -86,8 +86,8 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild build \
-            -project BadwaterIgnition.xcodeproj \
-            -scheme BadwaterIgnition \
+            -project PlateworksIgnition.xcodeproj \
+            -scheme PlateworksIgnition \
             -destination "platform=macOS,arch=arm64" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             | xcbeautify
@@ -104,8 +104,8 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild build \
-            -project BadwaterIgnition.xcodeproj \
-            -scheme BadwaterWidget \
+            -project PlateworksIgnition.xcodeproj \
+            -scheme PlateworksWidget \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             | xcbeautify
@@ -127,36 +127,36 @@ jobs:
             exit 1
           fi
           xcodebuild build \
-            -project BadwaterIgnition.xcodeproj \
-            -scheme BadwaterWatch \
+            -project PlateworksIgnition.xcodeproj \
+            -scheme PlateworksWatch \
             -destination "id=$udid" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             | xcbeautify
 
-      - name: Unit tests (BadwaterIgnitionTests)
+      - name: Unit tests (PlateworksIgnitionTests)
         run: |
           set -euo pipefail
           xcodebuild test \
-            -project BadwaterIgnition.xcodeproj \
-            -scheme BadwaterIgnition \
+            -project PlateworksIgnition.xcodeproj \
+            -scheme PlateworksIgnition \
             -destination "id=${{ steps.sim.outputs.udid }}" \
-            -only-testing:BadwaterIgnitionTests \
+            -only-testing:PlateworksIgnitionTests \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             | xcbeautify
 
-      - name: UI tests (BadwaterIgnitionUITests)
+      - name: UI tests (PlateworksIgnitionUITests)
         run: |
           set -euo pipefail
           xcodebuild test \
-            -project BadwaterIgnition.xcodeproj \
-            -scheme BadwaterIgnition \
+            -project PlateworksIgnition.xcodeproj \
+            -scheme PlateworksIgnition \
             -destination "id=${{ steps.sim.outputs.udid }}" \
-            -only-testing:BadwaterIgnitionUITests \
+            -only-testing:PlateworksIgnitionUITests \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             | xcbeautify
 
   web-conformance:
-    name: Web parity (engine.js vs BadwaterCore vectors)
+    name: Web parity (engine.js vs PlateworksCore vectors)
     runs-on: ubuntu-latest
     env:
       TZ: UTC   # xlsx sheet names/titles are date-derived on both sides

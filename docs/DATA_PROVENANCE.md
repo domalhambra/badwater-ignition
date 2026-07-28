@@ -1,6 +1,6 @@
 # Data Provenance & Verification
 
-Because Badwater Ignition is used to make fireline decisions, the table data is
+Because Plateworks Ignition is used to make fireline decisions, the table data is
 treated as safety-critical. This document records exactly where each value came
 from and how it was verified.
 
@@ -22,7 +22,7 @@ section, pages 44–49:
 Relative-humidity elevation bands and station pressures are from the NWCG
 temperature/RH/dew-point tables, **PMS 437**.
 
-The IRPG and PMS 437 are U.S. government works in the public domain. Badwater
+The IRPG and PMS 437 are U.S. government works in the public domain. Plateworks
 Ignition is independent and **not affiliated with or endorsed by the NWCG.**
 
 ## Transcription method
@@ -37,7 +37,7 @@ Ignition is independent and **not affiliated with or endorsed by the NWCG.**
    **cell-by-cell** in code. Any cell where the four sources did not unanimously
    agree was flagged and adjudicated by eye against the source image.
 5. The final values are additionally guarded by property tests
-   (`Tests/BadwaterCoreTests/TableMonotonicityTests.swift`):
+   (`Tests/PlateworksCoreTests/TableMonotonicityTests.swift`):
    - Table A is non-decreasing as humidity rises.
    - PIG is non-increasing as fine fuel moisture rises (both variants).
    - All values fall within the printed envelopes (RFM 1–14, corrections 0–6,

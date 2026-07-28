@@ -1,5 +1,5 @@
 import Foundation
-import BadwaterCore
+import PlateworksCore
 
 /// Where the watch keeps the last snapshot the phone sent.
 ///
@@ -22,10 +22,10 @@ import BadwaterCore
 enum WatchSnapshotStore {
 
     /// Must match the App Group entitlement on the watch app **and** the
-    /// complication. Distinct from the phone's `group.com.badwater.ignition`:
+    /// complication. Distinct from the phone's `group.org.plateworks.ignition`:
     /// an App Group is shared between a host app and its extensions on one
     /// device, and does not cross the pairing.
-    static let appGroupIdentifier = "group.com.badwater.ignition.watch"
+    static let appGroupIdentifier = "group.org.plateworks.ignition.watch"
 
     static let filename = "snapshot.json"
 
@@ -42,7 +42,7 @@ enum WatchSnapshotStore {
         guard let support = try? fm.url(for: .applicationSupportDirectory,
                                         in: .userDomainMask,
                                         appropriateFor: nil, create: true) else { return nil }
-        return ensured(support.appendingPathComponent("BadwaterWatch", isDirectory: true))
+        return ensured(support.appendingPathComponent("PlateworksWatch", isDirectory: true))
     }
 
     private static func ensured(_ url: URL) -> URL? {

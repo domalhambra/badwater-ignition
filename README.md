@@ -1,11 +1,11 @@
-# Badwater Ignition
+# Plateworks Ignition
 
 A fast, offline iOS/macOS field calculator for **Probability of Ignition (PIG)**,
 **Fine Fuel Moisture (FFM)**, and **relative humidity** — built directly on the
 NWCG *Incident Response Pocket Guide* (IRPG, PMS 461) and belt-weather-kit tables.
 
 Firefighters normally chain through Table A → the B/C/D correction tables → the
-PIG table by hand, which is slow and error-prone. Badwater Ignition walks that
+PIG table by hand, which is slow and error-prone. Plateworks Ignition walks that
 exact chain, **shows its work at every step**, and computes PIG for both shaded
 and unshaded fuels at once — while staying faithful to the printed guide, cell
 for cell.
@@ -35,26 +35,26 @@ for U.S. wildland fire.
 ## Architecture
 
 ```
-Package.swift                     BadwaterCore — pure, dependency-free, Linux-testable
-Sources/BadwaterCore/
+Package.swift                     PlateworksCore — pure, dependency-free, Linux-testable
+Sources/PlateworksCore/
   Model/                          Aspect, Slope, Shading, TimeOfDay, MonthGroup, …
   Tables/                         Table A, B/C/D corrections, PIG table, p.49 interpretation
   Psychrometrics/                 Elevation bands + RH / dew point
   IgnitionCalculator.swift        the end-to-end chain
-Tests/BadwaterCoreTests/          golden cells, banding boundaries, property tests, worked examples
+Tests/PlateworksCoreTests/          golden cells, banding boundaries, property tests, worked examples
 
-App/BadwaterIgnition/             SwiftUI app (iOS + macOS)
-  DesignSystem/                   Badwater color/type tokens + components (VoiceOver-ready)
+App/PlateworksIgnition/             SwiftUI app (iOS + macOS)
+  DesignSystem/                   Plateworks color/type tokens + components (VoiceOver-ready)
   Features/Ignition, Features/Humidity
   Assets.xcassets/Colors          light/dark palette (generated)
   PrivacyInfo.xcprivacy           privacy manifest (no data collected)
-App/BadwaterIgnitionTests/        view-model unit tests (run in Xcode)
-App/BadwaterIgnitionUITests/      black-box UI smoke tests (run in Xcode)
+App/PlateworksIgnitionTests/        view-model unit tests (run in Xcode)
+App/PlateworksIgnitionUITests/      black-box UI smoke tests (run in Xcode)
 project.yml                       XcodeGen spec (app + test targets, test scheme)
 
 web/                              PWA port (ignition.badwater.guide) — engine.js (logic twin
-                                  of BadwaterCore) + app.js (UI twin of App/); static, offline-first
-Sources/BadwaterVectors/          `swift run badwater-vectors` — emits the conformance vectors
+                                  of PlateworksCore) + app.js (UI twin of App/); static, offline-first
+Sources/PlateworksVectors/          `swift run plateworks-vectors` — emits the conformance vectors
 conformance/                      golden vectors + Node harness that hold web/ at parity in CI
 docs/PARITY.md                    how iOS ⇄ web parity is enforced & auto-ported
 
@@ -64,15 +64,15 @@ docs/APP_STORE.md                 draft App Store listing copy
 ATTRIBUTION.md                    NWCG public-domain sourcing + disclaimer
 ```
 
-All correctness-critical logic lives in **`BadwaterCore`**, which has no UI and no
+All correctness-critical logic lives in **`PlateworksCore`**, which has no UI and no
 Apple-framework dependencies, so its full test suite runs on Linux CI.
 
 ## Web app & parity
 
 The same tool ships as a static, offline-capable PWA at **ignition.badwater.guide**
 (`web/`, deployed via Netlify). Its calculation engine (`web/engine.js`) is a
-JavaScript twin of `BadwaterCore`, and parity is **enforced, not promised**:
-golden vectors generated from the Swift core (`swift run badwater-vectors`) are
+JavaScript twin of `PlateworksCore`, and parity is **enforced, not promised**:
+golden vectors generated from the Swift core (`swift run plateworks-vectors`) are
 replayed against the web engine in CI on every push — tables, ignition chains,
 psychrometrics, radio scripts, and byte-exact IMET `.xlsx` output. When an
 iOS-side change lands on `main` without its web counterpart, a GitHub Actions
@@ -89,11 +89,11 @@ swift test
 **App (macOS + Xcode 15+):**
 ```sh
 brew install xcodegen        # once
-xcodegen generate            # produces BadwaterIgnition.xcodeproj from project.yml
-open BadwaterIgnition.xcodeproj
+xcodegen generate            # produces PlateworksIgnition.xcodeproj from project.yml
+open PlateworksIgnition.xcodeproj
 ```
 No XcodeGen? Create a new multiplatform SwiftUI App in Xcode, add the
-`App/BadwaterIgnition` sources and the `Assets.xcassets`, and add `BadwaterCore`
+`App/PlateworksIgnition` sources and the `Assets.xcassets`, and add `PlateworksCore`
 as a local package dependency.
 
 The color palette is generated:

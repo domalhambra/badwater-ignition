@@ -43,7 +43,7 @@ anything further; there may be nothing left to fix.
 review that settled the **display policy** both depend on (now recorded as a
 guardrail in `CLAUDE.md`). Two consequences changed the shape of the work:
 
-- The widget's staleness rule became a pure `ObsGlance` type in `BadwaterCore`,
+- The widget's staleness rule became a pure `ObsGlance` type in `PlateworksCore`,
   golden-tested on Linux CI, rather than untested logic inside an extension.
 - The watch app is read-only **by policy, not by scoping** — freezing a reading
   requires the capture card — so the two-way `WatchConnectivity` merge problem
@@ -68,7 +68,7 @@ hand-test this" into "CI can prove it":
 1. **The app target now builds and tests in CI** (`app-build` job: XcodeGen →
    iOS Simulator + macOS → both test bundles). Before, `App/` was never compiled
    by anything.
-2. **`BadwaterIgnitionTests` runs for the first time**, and it already has the
+2. **`PlateworksIgnitionTests` runs for the first time**, and it already has the
    exact fixture pattern the riskiest item needs:
 
    ```swift
@@ -99,7 +99,7 @@ later, the record gets migrated *twice*, and each migration of a live shift log
 is a chance to lose one.
 
 So: R1 writes into an **App Group container from the start**
-(`group.com.badwater.ignition`), whether or not a widget exists yet. One
+(`group.org.plateworks.ignition`), whether or not a widget exists yet. One
 migration, one risk window.
 
 > Note the limit of that: App Groups share between an iOS app and its extensions
@@ -112,7 +112,7 @@ migration, one risk window.
 
 R4 (`@MainActor` on the models, Swift 6 language mode for the core) should land
 before any new target is written. New targets are written in whatever mode is
-current and all of them link `BadwaterCore`; converting three models plus a
+current and all of them link `PlateworksCore`; converting three models plus a
 widget, an intents extension, and a watch app is strictly worse than converting
 three models.
 
@@ -135,7 +135,7 @@ them the right things to do while the test suite is fresh in mind.
 ### 1.1 Swift 6 language mode + `@MainActor` on the models (R4)
 
 **Change.** Annotate `IgnitionModel`, `HumidityModel`, `WeatherWatchModel`, and
-`SiteLocationProvider` `@MainActor`; move `BadwaterCore` to
+`SiteLocationProvider` `@MainActor`; move `PlateworksCore` to
 `swiftLanguageModes(.v6)` in `Package.swift`; resolve whatever falls out.
 
 **Why it's not just hygiene.** The models are mutated from views and read from
@@ -158,7 +158,7 @@ list.
 **Change.** Move `watch.shift` and `watch.history` out of `UserDefaults` into JSON
 files in an App Group container, written with `Data.write(to:options: .atomic)`
 and an appropriate `FileProtectionType`. Small scalar preferences stay in
-`UserDefaults`. Add `group.com.badwater.ignition` to `project.yml` entitlements.
+`UserDefaults`. Add `group.org.plateworks.ignition` to `project.yml` entitlements.
 
 **Why.** `UserDefaults` is a preferences cache read and written wholesale as a
 plist. `history` is *designed* to grow across a whole assignment, and every
@@ -167,7 +167,7 @@ evidentiary record of what went out over the radio net.
 
 **Verification — this is the part that matters.** Do not ship this on a green
 compile:
-- Round-trip migration test in `BadwaterIgnitionTests`: seed a store in the old
+- Round-trip migration test in `PlateworksIgnitionTests`: seed a store in the old
   `UserDefaults` format (multi-day history, obs with frozen `broadcastText`,
   pre-feature obs with `nil` optionals), construct `WeatherWatchModel`, assert
   every observation survives identically — including `broadcastText`, which must
@@ -211,7 +211,7 @@ port, and no service-worker cache bump was required. The item that was sized at
 `removeObs` overwrites `lastRemovedObs` while the undo strip still reads
 "Observation removed", so after two deletes the first is unrecoverable with no
 indication. Either keep a small bounded stack or dismiss the strip when it goes
-stale. Testable in `BadwaterIgnitionTests` alongside the existing
+stale. Testable in `PlateworksIgnitionTests` alongside the existing
 `testUndoRestoresDeletedObs`. **Size.** 2 hours. **Environment.** Cloud.
 
 ### 2.3 Future-dated timestamps in the edit sheet (R7)
@@ -239,7 +239,7 @@ behind file I/O that can be made lazy. Worth doing *after* 1.2, not before.
 
 ### 2.6 Dynamic Type on the primary readouts (R5)
 
-`BadwaterFont.readout(_:)`, `.inputValue` (32 pt) and `.title` (22 pt) are fixed
+`PlateworksFont.readout(_:)`, `.inputValue` (32 pt) and `.title` (22 pt) are fixed
 point sizes, so the numbers a crew actually reads — at arm's length, in smoke,
 possibly without reading glasses — don't respond to the accessibility text size
 they set. `StatusStrip` and `ResultCard` already do this correctly with
@@ -289,7 +289,7 @@ computed value presented outside the disclaimer context. Ask permission at the
 point of value (first log), not at launch.
 
 **Verification.** Scheduling logic belongs in a testable type
-(`ObsCadenceScheduler`) so `BadwaterIgnitionTests` covers "log at 1400 → next
+(`ObsCadenceScheduler`) so `PlateworksIgnitionTests` covers "log at 1400 → next
 notification at 1500", with the `UNUserNotificationCenter` call behind a protocol.
 Delivery itself needs a device. **Size.** 1 day. **Environment.** Mostly cloud;
 device check before release.
@@ -326,7 +326,7 @@ weather-freshness strip.
 platform is claimed but not shipped, which is worth resolving one way or the other
 (build it, or drop the declaration).
 
-A wrist readout is close to ideal for this job, and `BadwaterCore` is already
+A wrist readout is close to ideal for this job, and `PlateworksCore` is already
 portable. The real work is the data path: an independent watchOS app has its own
 storage, so **App Groups do not help** — syncing the shift log needs
 `WatchConnectivity` (`WCSession`), with a decision about whether the watch is

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate the Badwater Ignition color asset catalog (light + dark variants).
+"""Generate the Plateworks Ignition color asset catalog (light + dark variants).
 
 Run from repo root:  python3 scripts/generate_color_assets.py
-Outputs colorsets into App/Shared/BadwaterColors.xcassets/.
+Outputs colorsets into App/Shared/PlateworksColors.xcassets/.
 
 The palette lives in App/Shared, not in the app's own catalog, because the
 widget extension and the watch targets need the severity ramp too and Color(_:)
@@ -64,7 +64,7 @@ def colorset(light, dark):
 
 def main():
     root = pathlib.Path(__file__).resolve().parent.parent
-    base = root / "App" / "Shared" / "BadwaterColors.xcassets"
+    base = root / "App" / "Shared" / "PlateworksColors.xcassets"
     base.mkdir(parents=True, exist_ok=True)
     # Asset catalog root
     (base / "Contents.json").write_text(json.dumps({"info": {"author": "xcode", "version": 1}}, indent=2))

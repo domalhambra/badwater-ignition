@@ -1,4 +1,4 @@
-# Running Badwater Ignition on iOS, watchOS and a device
+# Running Plateworks Ignition on iOS, watchOS and a device
 
 A first-time Xcode guide for this repo, written against a verified run on
 2026-07-27 (Xcode 26.6, XcodeGen 2.x, macOS 27).
@@ -11,7 +11,7 @@ document is how you do that.
 
 ## The one rule that will bite you
 
-**`BadwaterIgnition.xcodeproj` is generated, not committed.** It is built from
+**`PlateworksIgnition.xcodeproj` is generated, not committed.** It is built from
 [`project.yml`](../project.yml) by XcodeGen, and running `xcodegen generate`
 overwrites it completely.
 
@@ -39,10 +39,10 @@ Then, from the repo root:
 xcodegen generate
 ```
 
-That creates `BadwaterIgnition.xcodeproj`. Open it:
+That creates `PlateworksIgnition.xcodeproj`. Open it:
 
 ```bash
-open BadwaterIgnition.xcodeproj
+open PlateworksIgnition.xcodeproj
 ```
 
 ### Known issue: the simulator panel needs a sudo fix
@@ -65,18 +65,18 @@ Four things matter. Ignore the rest for now.
 
 | Where | What it is |
 |---|---|
-| **Toolbar, top-left: `BadwaterIgnition > iPhone 17 Pro`** | The **scheme** (what to build) and the **destination** (where to run it). You will change these constantly. Click the left half for scheme, right half for destination. |
+| **Toolbar, top-left: `PlateworksIgnition > iPhone 17 Pro`** | The **scheme** (what to build) and the **destination** (where to run it). You will change these constantly. Click the left half for scheme, right half for destination. |
 | **▶ Play button** | Build + install + launch. `⌘R`. |
 | **■ Stop button** | Kills the running app. `⌘.` |
 | **Bottom pane** | The console — `print()` output and crash messages. `⌘⇧C` if it's hidden. |
 
 The three schemes in this project:
 
-- **BadwaterIgnition** — the phone app. Building it also builds and embeds the
+- **PlateworksIgnition** — the phone app. Building it also builds and embeds the
   widget and the watch app.
-- **BadwaterWidget** — the widget extension alone. Exists so a broken embed
+- **PlateworksWidget** — the widget extension alone. Exists so a broken embed
   fails loudly instead of silently dropping the widget.
-- **BadwaterWatch** — the watch app. Needs a *watchOS* destination; the iOS
+- **PlateworksWatch** — the watch app. Needs a *watchOS* destination; the iOS
   scheme does not compile watch content for a simulator.
 
 ---
@@ -94,7 +94,7 @@ the plan.
 You do not need an Apple ID to avoid this. Ad-hoc signing is enough:
 
 ```bash
-xcodebuild build -project BadwaterIgnition.xcodeproj -scheme BadwaterIgnition \
+xcodebuild build -project PlateworksIgnition.xcodeproj -scheme PlateworksIgnition \
   -destination "id=$SIM" \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES
 ```
@@ -105,7 +105,7 @@ catches people out.
 Check it took, before blaming the code:
 
 ```bash
-xcrun simctl get_app_container "$SIM" com.badwater.ignition group.com.badwater.ignition
+xcrun simctl get_app_container "$SIM" org.plateworks.ignition group.org.plateworks.ignition
 ```
 
 A path means the group container exists. A usage message means it does not, and
@@ -123,7 +123,7 @@ what makes this possible.
 
 ### A1. Run the phone app
 
-1. Scheme: **BadwaterIgnition**. Destination: **iPhone 17 Pro**.
+1. Scheme: **PlateworksIgnition**. Destination: **iPhone 17 Pro**.
 2. Press **▶**.
 
 Verified working on 2026-07-27: the app launches to the Ignition tab with the
@@ -133,7 +133,7 @@ Humidity · Ignition · Obs bar.
 
 1. With the app running, press `⌘⇧H` to go to the simulator home screen.
 2. Click and **hold** on empty space until the icons jiggle.
-3. Tap **Edit → Add Widget** (top-left), search "Badwater".
+3. Tap **Edit → Add Widget** (top-left), search "Plateworks".
 4. Add the **small** one, then repeat for the **lock screen** one
    (`accessoryRectangular`) via Settings → Wallpaper → Customize → Lock Screen.
 
@@ -173,7 +173,7 @@ xcrun simctl pair "$(xcrun simctl list devices available | grep -m1 'Apple Watch
 Or in Xcode: **Window → Devices and Simulators → Simulators**, select the
 iPhone, set **Paired Watch**.
 
-Then set the scheme to **BadwaterWatch**, destination to the paired watch, and
+Then set the scheme to **PlateworksWatch**, destination to the paired watch, and
 press ▶. Confirm the glance screen shows the last snapshot rather than blank,
 and that the complication updates on the face.
 
@@ -209,8 +209,8 @@ Then in Xcode: **Settings → Accounts → +** and sign in.
 In the [Developer portal](https://developer.apple.com/account/resources/identifiers/list/applicationGroup),
 create **both**:
 
-- `group.com.badwater.ignition` — phone app + widget
-- `group.com.badwater.ignition.watch` — watch app + complication
+- `group.org.plateworks.ignition` — phone app + widget
+- `group.org.plateworks.ignition.watch` — watch app + complication
 
 Two groups, not one, because the complication is a separate process from the
 watch app and an App Group does not reach across from the phone to the watch.
@@ -257,7 +257,7 @@ Tick them off in the plan document as they pass.
 Before and after any change:
 
 ```bash
-swift test && swift run badwater-vectors --check conformance/vectors.json && node conformance/check-web.js
+swift test && swift run plateworks-vectors --check conformance/vectors.json && node conformance/check-web.js
 ```
 
 Green baseline as of 2026-07-27: **140 tests, vectors up to date, 1172 parity
@@ -272,8 +272,8 @@ Two checklist items were settled locally and need no device:
 - ✅ **`NSSupportsLiveActivities` reaches the built `Info.plist`.** Verified
   present (`true`) in the built simulator bundle, not just in `project.yml`.
   This was flagged as the likeliest silent failure; it is not one.
-- ✅ **Widget and watch app are actually embedded** — `PlugIns/BadwaterWidget.appex`
-  and `Watch/BadwaterWatch.app` are both present in the built bundle.
+- ✅ **Widget and watch app are actually embedded** — `PlugIns/PlateworksWidget.appex`
+  and `Watch/PlateworksWatch.app` are both present in the built bundle.
 
 ## Resolved drift: CI now matches your Xcode
 

@@ -1,7 +1,7 @@
 # Attribution & Disclaimer
 
 ## Source data
-Badwater Ignition's calculations are derived from U.S. government works in the
+Plateworks Ignition's calculations are derived from U.S. government works in the
 public domain, published by the National Wildfire Coordinating Group (NWCG):
 
 - **Incident Response Pocket Guide (IRPG), PMS 461** — Fine Fuel Moisture and
@@ -16,9 +16,9 @@ Works produced by the U.S. federal government are not subject to copyright in
 the United States (17 U.S.C. § 105).
 
 ## Disclaimer
-Badwater Ignition is an **independent** decision-support tool. It is **not
+Plateworks Ignition is an **independent** decision-support tool. It is **not
 affiliated with, sponsored by, or endorsed by the NWCG** or any government
-agency. "BADWATER" is used as the product's own brand and does not imply any
+agency. "PLATEWORKS" is used as the product's own brand and does not imply any
 affiliation with other holders of that mark.
 
 The app provides estimates to support — not replace — trained judgment. Fire

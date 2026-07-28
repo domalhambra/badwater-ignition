@@ -1,8 +1,8 @@
 {
 "meta": {
  "version": 1,
- "source": "Sources/BadwaterCore (IRPG PMS 461 / PMS 437)",
- "generatedBy": "swift run badwater-vectors --out conformance/vectors.json",
+ "source": "Sources/PlateworksCore (IRPG PMS 461 / PMS 437)",
+ "generatedBy": "swift run plateworks-vectors --out conformance/vectors.json",
  "tz": "Date-derived cases (xlsx sheet names/titles) assume TZ=UTC on both sides",
  "chainCaseColumns": ["dryBulbF","rh","month","timeBand","aspect","slope","elevationDelta","rf","night","corrU","corrS","ffmU","ffmS","pigU","pigS","behU","behS"],
  "windCaseColumns": ["low","high","dir","gust","spot","spoken","imet"],

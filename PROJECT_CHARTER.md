@@ -1,4 +1,4 @@
-# Project Charter — Badwater Ignition
+# Project Charter — Plateworks Ignition
 
 _Chartered 2026-07-18. This is a retroactive charter: the project was already mature (native app + web port + parity CI) when it was formally filed into the workspace._
 
@@ -18,9 +18,24 @@ Decision-support only. Not affiliated with or endorsed by the NWCG.
 - **Native iOS/macOS app — in development.** Source-complete with unit + UI test targets; not yet distributed (no TestFlight/App Store build yet).
 - **Parity — enforced.** Conformance vectors from the Swift core replay against the web engine in CI on every push.
 
+## Status update (2026-07-27) — renamed to Plateworks Ignition
+
+The product was renamed **Badwater Ignition → Plateworks Ignition** while it was
+still unreleased. Bundle identifiers moved `com.badwater.*` → `org.plateworks.*`
+and the App Groups `group.com.badwater.ignition{,.watch}` →
+`group.org.plateworks.ignition{,.watch}`; both were free to change only because
+no TestFlight or App Store build had ever been uploaded and no shipped install
+held data in the old group container. The Swift modules became `PlateworksCore`,
+`PlateworksVectors` and `PlateworksIgnition`. Not a single IRPG table cell moved:
+the conformance vectors are byte-identical outside their `meta` block.
+
+Still carrying the old brand at the time of the rename: the hosting identifiers
+below (GitHub repo, Netlify site, `badwater.guide` DNS), the `web/` PWA, and the
+export disclaimer string — see the rename notes in `docs/PARITY.md`.
+
 ## Location & filing
 
-- **Repo folder:** `Projects/Badwater OS/Badwater Ignitions/`
+- **Repo folder:** `Projects/Badwater OS/Badwater Ignition/`
 - **GitHub:** `domalhambra/badwater-ignition`
 - **Netlify site:** `badwater-ignition` → `badwater-ignition.netlify.app`
 - **DNS:** Cloudflare, `badwater.guide` zone — proxied CNAME `ignition` (+ `obs` alias for the 301)
@@ -29,10 +44,10 @@ Decision-support only. Not affiliated with or endorsed by the NWCG.
 
 ## Architecture (see `README.md` + `DESIGN.md` for detail)
 
-- `Sources/BadwaterCore/` — pure, dependency-free, Linux-testable calculation core (the source of truth).
-- `App/BadwaterIgnition/` — SwiftUI app (iOS + macOS), generated via XcodeGen (`project.yml`).
-- `web/` — static, offline-first PWA: `engine.js` (logic twin of `BadwaterCore`) + `app.js` (UI twin of `App/`).
-- `Sources/BadwaterVectors/` + `conformance/` — golden vectors + Node harness that hold the two ports at parity.
+- `Sources/PlateworksCore/` — pure, dependency-free, Linux-testable calculation core (the source of truth).
+- `App/PlateworksIgnition/` — SwiftUI app (iOS + macOS), generated via XcodeGen (`project.yml`).
+- `web/` — static, offline-first PWA: `engine.js` (logic twin of `PlateworksCore`) + `app.js` (UI twin of `App/`).
+- `Sources/PlateworksVectors/` + `conformance/` — golden vectors + Node harness that hold the two ports at parity.
 
 ## Design & reference docs
 
@@ -50,7 +65,7 @@ Session work is logged to the workspace `SESSION_LOG.md` (`Badwater PKM/wiki/00-
 
 ## Verification gates
 
-- `swift test` — `BadwaterCore` suite (golden cells, banding boundaries, property tests, worked examples) runs on Linux CI.
+- `swift test` — `PlateworksCore` suite (golden cells, banding boundaries, property tests, worked examples) runs on Linux CI.
 - **Conformance CI** — `node conformance/check-web.js` replays Swift-generated vectors against `web/engine.js`: tables, ignition chains, psychrometrics, radio scripts, and byte-exact IMET `.xlsx`. CI fails on any disagreement.
 - **Web-parity agent** — when an iOS change lands on `main` without its web counterpart, a GitHub Actions agent ports it and opens a draft parity PR gated by the same checks.
 - App-side: Xcode unit + UI test targets.
@@ -63,7 +78,8 @@ Swift / SwiftUI · XcodeGen · vanilla-JS PWA (no build step, no deps) · Netlif
 ## Milestones
 
 - [x] **Web PWA live** at `ignition.badwater.guide` — 2026-07-18
-- [x] Brand unified to "Badwater Ignition" across native + web
+- [x] Brand unified to "Badwater Ignition" across native + web — 2026-07-18
+- [x] Code renamed to **Plateworks Ignition** (bundle IDs, App Groups, Swift modules) — 2026-07-27
 - [ ] Finalize `DESIGN.md` design system pass
 - [ ] Native app → **TestFlight beta** (first external testers)
 - [ ] Finalize `docs/APP_STORE.md` listing + assets (screenshots, privacy)

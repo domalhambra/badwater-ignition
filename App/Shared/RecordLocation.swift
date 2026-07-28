@@ -13,7 +13,7 @@ enum RecordLocation {
     /// record. See `project.yml`: the app and the widget both declare it; the
     /// watch deliberately does not, because an App Group is shared with
     /// extensions on the same device and does not reach a paired watch.
-    static let appGroupIdentifier = "group.com.badwater.ignition"
+    static let appGroupIdentifier = "group.org.plateworks.ignition"
 
     static let shiftFilename = "shift.json"
     static let historyFilename = "history.json"

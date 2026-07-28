@@ -1,7 +1,7 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// BadwaterCore is a pure-Swift, dependency-free library that encodes the NWCG
+// PlateworksCore is a pure-Swift, dependency-free library that encodes the NWCG
 // Incident Response Pocket Guide (IRPG, PMS 461) Fine Fuel Moisture / Probability
 // of Ignition tables and the psychrometric relative-humidity relationships.
 //
@@ -9,15 +9,15 @@ import PackageDescription
 // golden-test suite runs on Linux CI as well as on Apple platforms. The
 // SwiftUI app (see the `App/` directory and `project.yml`) depends on this core.
 let package = Package(
-    name: "BadwaterIgnition",
+    name: "PlateworksIgnition",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
         .watchOS(.v10)
     ],
     products: [
-        .library(name: "BadwaterCore", targets: ["BadwaterCore"]),
-        .executable(name: "badwater-vectors", targets: ["BadwaterVectors"])
+        .library(name: "PlateworksCore", targets: ["PlateworksCore"]),
+        .executable(name: "plateworks-vectors", targets: ["PlateworksVectors"])
     ],
     targets: [
         // Swift 6 language mode: full data-race checking. The core is pure value
@@ -26,22 +26,22 @@ let package = Package(
         // targets, the widget, and the watch app all link a core that is provably
         // safe to touch from any isolation.
         .target(
-            name: "BadwaterCore",
-            path: "Sources/BadwaterCore",
+            name: "PlateworksCore",
+            path: "Sources/PlateworksCore",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         // Emits conformance/vectors.json — golden vectors the web port
         // (web/engine.js) is checked against in CI. See docs/PARITY.md.
         .executableTarget(
-            name: "BadwaterVectors",
-            dependencies: ["BadwaterCore"],
-            path: "Sources/BadwaterVectors",
+            name: "PlateworksVectors",
+            dependencies: ["PlateworksCore"],
+            path: "Sources/PlateworksVectors",
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
-            name: "BadwaterCoreTests",
-            dependencies: ["BadwaterCore"],
-            path: "Tests/BadwaterCoreTests",
+            name: "PlateworksCoreTests",
+            dependencies: ["PlateworksCore"],
+            path: "Tests/PlateworksCoreTests",
             swiftSettings: [.swiftLanguageMode(.v6)]
         )
     ]

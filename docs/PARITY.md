@@ -1,7 +1,7 @@
 # iOS ⇄ Web parity: how it stays true
 
-Badwater Ignition ships twice: the SwiftUI app (iOS/macOS, built on
-`Sources/BadwaterCore`) and the hand-written vanilla-JS PWA in `web/`
+Plateworks Ignition ships twice: the SwiftUI app (iOS/macOS, built on
+`Sources/PlateworksCore`) and the hand-written vanilla-JS PWA in `web/`
 (ignition.badwater.guide). Two implementations of one safety-relevant spec is a
 standing invitation to drift — a wrong PIG on one platform is exactly the bug
 this repo exists to prevent. This document describes the machinery that makes
@@ -11,7 +11,7 @@ diligence.
 There are three layers. Each works alone; together they close the loop.
 
 ```
-Sources/BadwaterCore  ──(swift run badwater-vectors)──►  conformance/vectors.json
+Sources/PlateworksCore  ──(swift run plateworks-vectors)──►  conformance/vectors.json
         │                                                        │
         │  CI: vectors must regenerate byte-identically          │  CI: web/engine.js must
         │  ("vectors are fresh" — core-tests job)                │  replay every vector
@@ -31,7 +31,7 @@ Sources/BadwaterCore  ──(swift run badwater-vectors)──►  conformance/v
 - **`web/engine.js`** — every calculation and text/binary output: IRPG tables,
   the ignition chain, psychrometrics, wind renderings, the radio script, CRC32,
   the zip writer, and the IMET `.xlsx` builder. No DOM, no storage, no clock —
-  so Node can `require()` it directly. This file mirrors `Sources/BadwaterCore`.
+  so Node can `require()` it directly. This file mirrors `Sources/PlateworksCore`.
 - **`web/app.js`** — state, rendering, and event wiring. Mirrors `App/`.
 
 Classic scripts share the global lexical scope, so the split costs no build
@@ -41,8 +41,8 @@ core changes land in `engine.js`, feature/UI changes land in `app.js`.
 
 ## Layer 2 — golden vectors make divergence unmergeable
 
-`swift run badwater-vectors --out conformance/vectors.json` derives ~1,200
-checks **through BadwaterCore's public API** and writes them as deterministic,
+`swift run plateworks-vectors --out conformance/vectors.json` derives ~1,200
+checks **through PlateworksCore's public API** and writes them as deterministic,
 hand-formatted JSON (one case per line; reviewable diffs; no timestamps).
 Coverage spans the full grids, every banding boundary and clamp, end-to-end
 ignition chains, psychrometrics across all pressure bands, complete radio
@@ -53,7 +53,7 @@ writer uses a fixed DOS timestamp on both sides). See
 Two CI jobs (`.github/workflows/ci.yml`) hold the line:
 
 1. **Vectors are fresh** (`core-tests`, Swift container):
-   `swift run badwater-vectors --check conformance/vectors.json` fails if the
+   `swift run plateworks-vectors --check conformance/vectors.json` fails if the
    core changed without regenerating the committed vectors.
 2. **Web parity** (`web-conformance`, plain Node, `TZ=UTC`):
    `node conformance/check-web.js` fails if `web/engine.js` disagrees with the
@@ -114,8 +114,8 @@ group. `workflow_dispatch` allows manual/backfill runs.
 
 ## Working in this repo
 
-- **Changing `Sources/BadwaterCore`** → regenerate vectors in the same PR:
-  `swift run badwater-vectors --out conformance/vectors.json`. CI fails
+- **Changing `Sources/PlateworksCore`** → regenerate vectors in the same PR:
+  `swift run plateworks-vectors --out conformance/vectors.json`. CI fails
   otherwise. If your PR doesn't also port the web side, the agent will follow
   up after merge; `main`'s web-conformance job stays red until the parity PR
   merges (an honest signal, not a nuisance).
@@ -146,7 +146,7 @@ workflow still helps by pushing the port commit onto your PR branch on demand
 
 ## The structural endgame (if wanted later)
 
-`BadwaterCore` imports only Foundation, so it can compile to WebAssembly
+`PlateworksCore` imports only Foundation, so it can compile to WebAssembly
 (SwiftWasm) and replace `engine.js` outright — one implementation, parity by
 construction. The costs (multi-MB first load on fireline connections, a build
 step, a less-boring toolchain) are why this repo currently prefers the

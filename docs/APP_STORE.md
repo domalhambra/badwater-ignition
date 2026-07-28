@@ -1,9 +1,9 @@
-# App Store listing — Badwater Ignition
+# App Store listing — Plateworks Ignition
 
 Draft metadata for submission. Field lengths follow App Store Connect limits.
 
 ## Name & subtitle
-- **Name** (30): `Badwater Ignition`
+- **Name** (30): `Plateworks Ignition`
 - **Subtitle** (30): `PIG, fuel moisture & RH calc`
 
 ## Promotional text (170)
@@ -11,13 +11,13 @@ Draft metadata for submission. Field lengths follow App Store Connect limits.
 > factors and read shaded and unshaded PIG at a glance. Works fully offline.
 
 ## Description
-Badwater Ignition is a fast, offline calculator for **Probability of Ignition
+Plateworks Ignition is a fast, offline calculator for **Probability of Ignition
 (PIG)**, **Fine Fuel Moisture (FFM)**, and **relative humidity** for wildland
 fire, built directly on the NWCG Incident Response Pocket Guide (IRPG, PMS 461)
 and belt-weather-kit tables.
 
 Instead of flipping between Table A, the B/C/D correction tables, and the PIG
-table by hand, Badwater Ignition walks that exact chain for you and **shows its
+table by hand, Plateworks Ignition walks that exact chain for you and **shows its
 work at every step** — reference fuel moisture, correction, and fine fuel
 moisture stay on screen so you can verify against your pocket guide. It computes
 PIG for **both shaded and unshaded fuels at once**, and reads out the IRPG
@@ -48,7 +48,7 @@ verify against your own IRPG and consult local experts.
 
 ## Privacy (App Privacy "nutrition label")
 - **Data Not Collected.** No data is collected or linked to the user. See
-  `App/BadwaterIgnition/PrivacyInfo.xcprivacy`.
+  `App/PlateworksIgnition/PrivacyInfo.xcprivacy`.
 
 ## Support / notes for review
 - The app is a self-contained calculator with no network use.

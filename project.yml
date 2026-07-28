@@ -1,69 +1,69 @@
-# XcodeGen spec for the Badwater Ignition app.
+# XcodeGen spec for the Plateworks Ignition app.
 # Regenerate the .xcodeproj with:  xcodegen generate   (XcodeGen 2.38+)
 #
-# The app target depends on the local BadwaterCore Swift package (Package.swift
+# The app target depends on the local PlateworksCore Swift package (Package.swift
 # at the repo root), which holds all IRPG table data and calculation logic and
 # is independently unit-tested on Linux CI.
-name: BadwaterIgnition
+name: PlateworksIgnition
 options:
-  bundleIdPrefix: com.badwater
+  bundleIdPrefix: org.plateworks
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"
   createIntermediateGroups: true
 
 packages:
-  BadwaterCore:
+  PlateworksCore:
     path: .
 
 targets:
-  BadwaterIgnition:
+  PlateworksIgnition:
     type: application
     supportedDestinations: [iOS, macOS]
     sources:
-      - path: App/BadwaterIgnition
+      - path: App/PlateworksIgnition
       # Compiled into the app *and* into the widget extension, so the two
       # processes share one definition of the App Group container and the
       # record's filenames rather than each keeping a private copy that can
       # drift. See App/Shared/RecordLocation.swift.
       - path: App/Shared
     dependencies:
-      - package: BadwaterCore
-        product: BadwaterCore
+      - package: PlateworksCore
+        product: PlateworksCore
       # Embedded so the widget ships inside the app. iOS only: the extension has
       # no macOS destination, and embedding it unconditionally would break the
       # macOS build that keeps the canImport(AppKit) branches honest.
-      - target: BadwaterWidget
+      - target: PlateworksWidget
         embed: true
         platformFilter: iOS
       # The watch app ships inside the iOS app. Same iOS-only filter: there is
       # no macOS destination that embeds watch content.
-      - target: BadwaterWatch
+      - target: PlateworksWatch
         embed: true
         platformFilter: iOS
     entitlements:
-      path: App/BadwaterIgnition/BadwaterIgnition.entitlements
+      path: App/PlateworksIgnition/PlateworksIgnition.entitlements
       properties:
         # The observation record lives in this group container so a widget
         # extension (a separate process) can read it without the record having to
         # be migrated a second time. See ObservationRecordStore.
         com.apple.security.application-groups:
-          - group.com.badwater.ignition
+          - group.org.plateworks.ignition
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition
+        PRODUCT_BUNDLE_IDENTIFIER: org.plateworks.ignition
         # PRODUCT_NAME deliberately has NO space and matches the target name.
         # It names the binary and the .app bundle, and XcodeGen derives the unit
         # test target's TEST_HOST from the *target* name — so a spaced
-        # PRODUCT_NAME ("Badwater Ignition") pointed TEST_HOST at
-        # BadwaterIgnition.app/BadwaterIgnition while the build actually produced
-        # "Badwater Ignition.app/Badwater Ignition". BadwaterIgnitionTests could
+        # PRODUCT_NAME ("Plateworks Ignition") pointed TEST_HOST at
+        # PlateworksIgnition.app/PlateworksIgnition while the build actually produced
+        # "Plateworks Ignition.app/Plateworks Ignition". PlateworksIgnitionTests could
         # never launch as a result. The user-visible home-screen name comes from
         # INFOPLIST_KEY_CFBundleDisplayName below, which is what it is for.
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Badwater Ignition
+        INFOPLIST_KEY_CFBundleDisplayName: Plateworks Ignition
         INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleLightContent
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
@@ -84,7 +84,7 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: PoolTeal
         # Swift 6 language mode: full data-race checking, matching
-        # Package.swift's swiftLanguageMode(.v6) for BadwaterCore. The view
+        # Package.swift's swiftLanguageMode(.v6) for PlateworksCore. The view
         # models and the SwiftUI views are @MainActor-isolated accordingly.
         SWIFT_VERSION: "6.0"
         TARGETED_DEVICE_FAMILY: "1,2"
@@ -97,28 +97,28 @@ targets:
   # cannot write to it. iOS only — a widget extension has no macOS destination
   # here, and the watch complication is its own target (it cannot reach an App
   # Group and syncs over WatchConnectivity instead).
-  BadwaterWidget:
+  PlateworksWidget:
     type: app-extension
     supportedDestinations: [iOS]
     sources:
-      - path: App/BadwaterWidget
+      - path: App/PlateworksWidget
       # RecordLocation (one definition of the container path, shared with the
-      # app), BadwaterColor, and BadwaterColors.xcassets — the palette lives in
+      # app), PlateworksColor, and PlateworksColors.xcassets — the palette lives in
       # App/Shared precisely so this target gets it. Color(_:) resolves against
       # the *calling* bundle, which for an extension is the extension itself, so
       # the catalog must be compiled in here rather than inherited from the host.
       - path: App/Shared
     dependencies:
-      - package: BadwaterCore
-        product: BadwaterCore
+      - package: PlateworksCore
+        product: PlateworksCore
     entitlements:
-      path: App/BadwaterWidget/BadwaterWidget.entitlements
+      path: App/PlateworksWidget/PlateworksWidget.entitlements
       properties:
         # Must match the app's group exactly. A mismatch here does not error —
         # it presents as "the widget is always empty". See Task 14 in
         # docs/PLAN_WIDGET_AND_WATCH.md.
         com.apple.security.application-groups:
-          - group.com.badwater.ignition
+          - group.org.plateworks.ignition
     # A real Info.plist, not GENERATE_INFOPLIST_FILE.
     #
     # The plan specified `INFOPLIST_KEY_NSExtensionPointIdentifier`, but there is
@@ -130,14 +130,14 @@ targets:
     # nothing about the missing key. An extension point has to be declared in the
     # plist itself.
     info:
-      path: App/BadwaterWidget/Info.plist
+      path: App/PlateworksWidget/Info.plist
       properties:
-        CFBundleDisplayName: Badwater Ignition
+        CFBundleDisplayName: Plateworks Ignition
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.widget
+        PRODUCT_BUNDLE_IDENTIFIER: org.plateworks.ignition.widget
         SWIFT_VERSION: "6.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         SKIP_INSTALL: YES
@@ -146,55 +146,55 @@ targets:
   # observation, fed over WatchConnectivity. No App Group with the phone — a
   # group is shared between a host app and its extensions on one device and does
   # not cross the pairing, which is exactly why WCSession exists here.
-  BadwaterWatch:
+  PlateworksWatch:
     type: application
     # `platform:`, not `supportedDestinations:` — XcodeGen rejects watchOS in a
     # multiplatform destination list ("Create a separate target using platform").
     platform: watchOS
     deploymentTarget: "10.0"
     sources:
-      # Includes BadwaterWatchAssets.xcassets, which exists only to carry an
+      # Includes PlateworksWatchAssets.xcassets, which exists only to carry an
       # AppIcon set. A watchOS *application* requires one — actool fails the
       # build with "None of the input catalogs contained a matching ... app icon
       # set named AppIcon" — whereas the extensions don't. Like the iOS app's,
       # it declares the slot and carries no artwork yet.
-      - path: App/BadwaterWatch
+      - path: App/PlateworksWatch
       # Shared with the complication: the snapshot store both processes read.
       - path: App/WatchShared
-      # BadwaterColor + the palette. Deliberately NOT App/BadwaterIgnition's
+      # PlateworksColor + the palette. Deliberately NOT App/PlateworksIgnition's
       # catalog — that one carries an iOS-idiom AppIcon with no business in a
       # watchOS bundle.
-      - path: App/Shared/BadwaterColor.swift
-      - path: App/Shared/BadwaterColors.xcassets
+      - path: App/Shared/PlateworksColor.swift
+      - path: App/Shared/PlateworksColors.xcassets
     dependencies:
-      - package: BadwaterCore
-        product: BadwaterCore
-      - target: BadwaterWatchWidget
+      - package: PlateworksCore
+        product: PlateworksCore
+      - target: PlateworksWatchWidget
         embed: true
     entitlements:
-      path: App/BadwaterWatch/BadwaterWatch.entitlements
+      path: App/PlateworksWatch/PlateworksWatch.entitlements
       properties:
         # The watch pair's own group — a different identifier from the phone's
         # on purpose. The complication is a separate process from the watch app
         # and this container is the only way it sees a snapshot at all.
         com.apple.security.application-groups:
-          - group.com.badwater.ignition.watch
+          - group.org.plateworks.ignition.watch
     info:
-      path: App/BadwaterWatch/Info.plist
+      path: App/PlateworksWatch/Info.plist
       properties:
         CFBundleDisplayName: Ignition
         # WKApplication marks this as a modern *single-target* watch app. Without
         # it the installer reads the bundle as a legacy WatchKit 2.0 app and
         # refuses the whole containing iOS app:
-        #   "Found WatchKit 2.0 app at .../Watch/BadwaterWatch.app but it does
+        #   "Found WatchKit 2.0 app at .../Watch/PlateworksWatch.app but it does
         #    not have a WKWatchKitApp or WKApplication key set to true"
         # Note the blast radius — a missing key in the *watch* plist blocks
         # installation of the phone app, and therefore the phone's UI tests.
         WKApplication: true
-        WKCompanionAppBundleIdentifier: com.badwater.ignition
+        WKCompanionAppBundleIdentifier: org.plateworks.ignition
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.watchkitapp
+        PRODUCT_BUNDLE_IDENTIFIER: org.plateworks.ignition.watchkitapp
         SWIFT_VERSION: "6.0"
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
@@ -203,107 +203,107 @@ targets:
 
   # The complication. Same glance rule as the phone widget, applied against the
   # watch's own clock.
-  BadwaterWatchWidget:
+  PlateworksWatchWidget:
     type: app-extension
     platform: watchOS
     deploymentTarget: "10.0"
     sources:
-      - path: App/BadwaterWatchWidget
+      - path: App/PlateworksWatchWidget
       - path: App/WatchShared
-      - path: App/Shared/BadwaterColor.swift
-      - path: App/Shared/BadwaterColors.xcassets
+      - path: App/Shared/PlateworksColor.swift
+      - path: App/Shared/PlateworksColors.xcassets
     dependencies:
-      - package: BadwaterCore
-        product: BadwaterCore
+      - package: PlateworksCore
+        product: PlateworksCore
     entitlements:
-      path: App/BadwaterWatchWidget/BadwaterWatchWidget.entitlements
+      path: App/PlateworksWatchWidget/PlateworksWatchWidget.entitlements
       properties:
-        # Must match BadwaterWatch's exactly, or the complication is always
+        # Must match PlateworksWatch's exactly, or the complication is always
         # empty — the watch-side twin of the Task 14 trap.
         com.apple.security.application-groups:
-          - group.com.badwater.ignition.watch
+          - group.org.plateworks.ignition.watch
     # A real Info.plist for the same reason the phone widget needs one:
     # NSExtension is not settable via INFOPLIST_KEY_*, and an extension with no
     # declared extension point builds fine and fails at install.
     info:
-      path: App/BadwaterWatchWidget/Info.plist
+      path: App/PlateworksWatchWidget/Info.plist
       properties:
         CFBundleDisplayName: Ignition
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.watchkitapp.widget
+        PRODUCT_BUNDLE_IDENTIFIER: org.plateworks.ignition.watchkitapp.widget
         SWIFT_VERSION: "6.0"
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "4"
         SKIP_INSTALL: YES
 
-  BadwaterIgnitionTests:
+  PlateworksIgnitionTests:
     type: bundle.unit-test
     supportedDestinations: [iOS]
     sources:
-      - path: App/BadwaterIgnitionTests
+      - path: App/PlateworksIgnitionTests
     dependencies:
-      - target: BadwaterIgnition
-      - package: BadwaterCore
-        product: BadwaterCore
+      - target: PlateworksIgnition
+      - package: PlateworksCore
+        product: PlateworksCore
     entitlements:
-      path: App/BadwaterIgnition/BadwaterIgnition.entitlements
+      path: App/PlateworksIgnition/PlateworksIgnition.entitlements
       properties:
         # The observation record lives in this group container so a widget
         # extension (a separate process) can read it without the record having to
         # be migrated a second time. See ObservationRecordStore.
         com.apple.security.application-groups:
-          - group.com.badwater.ignition
+          - group.org.plateworks.ignition
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.unittests
+        PRODUCT_BUNDLE_IDENTIFIER: org.plateworks.ignition.unittests
         GENERATE_INFOPLIST_FILE: YES
 
-  BadwaterIgnitionUITests:
+  PlateworksIgnitionUITests:
     type: bundle.ui-testing
     supportedDestinations: [iOS]
     sources:
-      - path: App/BadwaterIgnitionUITests
+      - path: App/PlateworksIgnitionUITests
     dependencies:
-      - target: BadwaterIgnition
+      - target: PlateworksIgnition
     entitlements:
-      path: App/BadwaterIgnition/BadwaterIgnition.entitlements
+      path: App/PlateworksIgnition/PlateworksIgnition.entitlements
       properties:
         # The observation record lives in this group container so a widget
         # extension (a separate process) can read it without the record having to
         # be migrated a second time. See ObservationRecordStore.
         com.apple.security.application-groups:
-          - group.com.badwater.ignition
+          - group.org.plateworks.ignition
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.badwater.ignition.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: org.plateworks.ignition.uitests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:
-  BadwaterIgnition:
+  PlateworksIgnition:
     build:
       targets:
-        BadwaterIgnition: all
+        PlateworksIgnition: all
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - BadwaterIgnitionTests
-        - BadwaterIgnitionUITests
+        - PlateworksIgnitionTests
+        - PlateworksIgnitionUITests
 
   # Building the app scheme already compiles the embedded extension, but only
   # for as long as the embed wiring holds. This scheme compiles the widget on
   # its own, so a regression in that wiring fails as "the widget didn't build"
   # rather than silently dropping it from CI's coverage — which is exactly how
   # the canImport(AppKit) branches in WatchView rotted for months.
-  BadwaterWidget:
+  PlateworksWidget:
     build:
       targets:
-        BadwaterWidget: all
+        PlateworksWidget: all
     run:
       config: Debug
 
@@ -311,9 +311,9 @@ schemes:
   # app scheme does not compile watch content on a simulator destination, so
   # without this the watchOS sources would sit in the repo uncompiled by
   # anything — the precise way the canImport(AppKit) branches rotted.
-  BadwaterWatch:
+  PlateworksWatch:
     build:
       targets:
-        BadwaterWatch: all
+        PlateworksWatch: all
     run:
       config: Debug

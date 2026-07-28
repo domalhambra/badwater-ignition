@@ -1,6 +1,6 @@
 # Conformance vectors — iOS ⇄ web parity gate
 
-`vectors.json` is generated from **`Sources/BadwaterCore`** (the source of
+`vectors.json` is generated from **`Sources/PlateworksCore`** (the source of
 truth) and replayed against **`web/engine.js`** (the JavaScript port that
 powers ignition.badwater.guide). CI fails whenever the two implementations disagree,
 so parity is enforced by the build, not by diligence. Full design:
@@ -9,11 +9,11 @@ so parity is enforced by the build, not by diligence. Full design:
 ## Commands
 
 ```sh
-# regenerate after changing BadwaterCore (CI fails if you forget)
-swift run badwater-vectors --out conformance/vectors.json
+# regenerate after changing PlateworksCore (CI fails if you forget)
+swift run plateworks-vectors --out conformance/vectors.json
 
 # verify vectors.json still matches the core (what CI runs)
-swift run badwater-vectors --check conformance/vectors.json
+swift run plateworks-vectors --check conformance/vectors.json
 
 # verify the web engine against the vectors (what CI runs; no npm deps)
 node conformance/check-web.js

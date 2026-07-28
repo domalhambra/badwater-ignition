@@ -23,6 +23,11 @@ import PlateworksCore
 @MainActor
 struct SiteEditor: View {
     @Bindable var model: WeatherWatchModel
+    /// The shared site factors (aspect, slope, elevation delta). They live on the
+    /// Ignition model — the same values its Site section edits — and they reach
+    /// the PIG of every observation this shift freezes, so they belong in front
+    /// of the operator at the moment they are asked to confirm the site.
+    @Bindable var ignition: IgnitionModel
 
     /// One-shot GPS. Owned here because the fix is only ever consumed by these
     /// fields; nothing about it is persisted or exported.
@@ -36,6 +41,7 @@ struct SiteEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Metric.cardSpacing) {
             SectionHeader(title: "Site & radio", annotation: "IMET header")
+            siteFactors
             siteGate
             VStack(alignment: .leading, spacing: 10) {
                 labeledField("Radio addressee", "e.g. Division W", $model.addressee)
@@ -58,6 +64,32 @@ struct SiteEditor: View {
         .onAppear { seedCoordinateText() }
         .onChange(of: location.status) { _, status in
             if case .fixed(let fix) = status { apply(fix) }
+        }
+    }
+
+    // MARK: - Site factors
+
+    /// Aspect, slope, and elevation-vs-weather-site — the IRPG corrections that
+    /// every logged observation freezes.
+    ///
+    /// They sit **above** the gate because the gate's own copy asks the operator
+    /// to review the site factors, and until now this screen never showed them:
+    /// they were only editable on the Ignition tab while `pendingObs` read them
+    /// straight into the record. Placed here rather than in the capture sheet
+    /// because they are per-shift site facts, not per-reading measurements — the
+    /// sheet stays weather, time, and note.
+    private var siteFactors: some View {
+        VStack(alignment: .leading, spacing: Metric.cardSpacing) {
+            SectionHeader(title: "Site factors", annotation: "Corrections",
+                          sharedWith: "Ignition")
+            HStack(alignment: .top, spacing: 10) {
+                ChipPicker(title: "Aspect", options: Aspect.allCases,
+                           selection: $ignition.aspect, label: \.rawValue)
+                ChipPicker(title: "Slope", options: Slope.allCases,
+                           selection: $ignition.slope, label: \.displayName)
+            }
+            ChipPicker(title: "Elevation vs. weather site", options: ElevationDelta.allCases,
+                       selection: $ignition.elevationDelta, label: \.displayName)
         }
     }
 

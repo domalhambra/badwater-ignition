@@ -174,6 +174,50 @@ final class WeatherWatchModel {
         return WeatherObs(timestamp: now, estimate: estimate, humidity: humidity, rhSource: ignition.rhSource)
     }
 
+    /// Everything a LOG tap is about to freeze, in one line.
+    ///
+    /// Built from ``pendingObs(at:calendar:)`` — the same call the commit stores —
+    /// so the receipt cannot describe a reading different from the one recorded.
+    /// It exists because the site factors are shared with the Ignition tab: an
+    /// operator who scouted a different aspect an hour ago and never set it back
+    /// would otherwise freeze and broadcast the wrong slope's PIG with nothing on
+    /// screen to catch it. The obs time is shown *with the IRPG band it resolves
+    /// to*, since that band comes from the clock rather than the Ignition tab's
+    /// chips and the difference is worth seeing before committing.
+    ///
+    /// Wind is a parameter because it lives on the Ignition model until
+    /// ``logObs(at:calendar:wind:elevationFeet:location:note:forceLocation:suppressLocation:)``
+    /// folds it in.
+    func freezeReceipt(at now: Date = Date(), wind: Wind?,
+                       calendar: Calendar = .current) -> FreezeReceipt {
+        let obs = pendingObs(at: now, calendar: calendar)
+        let i = obs.estimate.input
+        let slung = obs.rhSource == .wetBulb
+        let timeLabel = obs.timeLabel(calendar)
+
+        var display = ["\(i.dryBulbF)°F",
+                       "\(i.relativeHumidity)% \(slung ? "sling" : "direct")"]
+        var spoken = ["\(i.dryBulbF) degrees",
+                      "\(i.relativeHumidity) percent relative humidity\(slung ? ", from the wet bulb" : "")"]
+        if let wind {
+            display.append(wind.spotString)
+            spoken.append("wind \(wind.spokenPhrase)")
+        }
+        display.append(Month.shortNames[i.month - 1])
+        spoken.append(Month.shortNames[i.month - 1])
+        display.append("\(timeLabel) → \(i.timeOfDay.label)")
+        spoken.append("\(timeLabel), band \(i.timeOfDay.label)")
+        display.append(i.aspect.rawValue)
+        spoken.append("\(i.aspect.displayName) aspect")
+        display.append(i.slope.displayName)
+        spoken.append("\(i.slope.displayName) slope")
+        display.append("\(i.elevationDelta.displayName) elev")
+        spoken.append("\(i.elevationDelta.displayName) elevation")
+
+        return FreezeReceipt(display: display.joined(separator: " · "),
+                             spoken: "Will freeze: " + spoken.joined(separator: ", ") + ".")
+    }
+
     /// Freeze the current reading and append it to the shift. Observed metadata
     /// for the IMET export (wind, absolute elevation, GPS) is captured by the app
     /// and folded into the frozen obs here — along with the spoken-location text
@@ -526,6 +570,13 @@ final class WeatherWatchModel {
         static let siteSource = "watch.siteSource"
         static let siteFixedAt = "watch.siteFixedAt"
     }
+}
+
+/// The two renderings of what a log is about to freeze: one to read, one to
+/// speak. Kept together so VoiceOver can never fall behind the printed line.
+struct FreezeReceipt {
+    let display: String
+    let spoken: String
 }
 
 extension WeatherObs {

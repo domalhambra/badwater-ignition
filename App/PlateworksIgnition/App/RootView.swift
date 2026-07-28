@@ -18,6 +18,9 @@ struct RootView: View {
     @State private var ignition: IgnitionModel
     @State private var watch: WeatherWatchModel
     @State private var selection: Tab = .ignition
+    /// Raised when a deep link wants the Obs tab to open its capture form; the
+    /// tab consumes and clears it.
+    @State private var startCapture = false
     @Environment(\.scenePhase) private var scenePhase
 
     enum Tab: Hashable { case ignition, watch }
@@ -42,7 +45,7 @@ struct RootView: View {
             .tag(Tab.ignition)
 
             NavigationStack {
-                WatchView(model: watch, ignition: ignition)
+                WatchView(model: watch, ignition: ignition, startCapture: $startCapture)
             }
             .tabItem { Label("Obs", systemImage: "binoculars") }
             .tag(Tab.watch)
@@ -60,7 +63,12 @@ struct RootView: View {
         guard let link = AppEnvironment.pendingDeepLink else { return }
         AppEnvironment.pendingDeepLink = nil
         switch link {
-        case .logObservation: selection = .watch
+        case .logObservation:
+            selection = .watch
+            // The intent is "log an observation", not "show me the log", so it
+            // opens the capture form too. WatchView clears the flag and honours
+            // the site gate.
+            startCapture = true
         }
     }
 }

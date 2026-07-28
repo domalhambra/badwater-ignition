@@ -61,6 +61,79 @@ final class WeatherWatchModelTests: XCTestCase {
         XCTAssertEqual(obs.value(of: .relativeHumidity), 8)      // direct RH used
     }
 
+    // MARK: - Freeze receipt
+
+    /// The receipt's contract: every value it names is a value the log actually
+    /// freezes. It is built from the same `pendingObs` the commit stores, and
+    /// this pins that — a receipt that drifts from the record is worse than none,
+    /// because the operator would be checking a reassurance instead of a reading.
+    func testFreezeReceiptNamesExactlyWhatTheLogFreezes() {
+        let ign = ignition(dry: 90, rh: 8)
+        ign.aspect = .west
+        ign.slope = .steep
+        ign.elevationDelta = .above
+        ign.windSpeedLow = 3; ign.windSpeedHigh = 6; ign.windDirection = .southwest
+        let w = model(ignition: ign, store: fresh("watch.receipt"))
+        w.confirmSite()
+
+        let at = Date()
+        let receipt = w.freezeReceipt(at: at, wind: ign.wind)
+        let obs = w.logObs(at: at, wind: ign.wind)
+        let input = obs.estimate.input
+        let line = receipt.display
+
+        XCTAssertTrue(line.contains("\(input.dryBulbF)°F"), line)
+        XCTAssertTrue(line.contains("\(input.relativeHumidity)%"), line)
+        XCTAssertTrue(line.contains(ign.wind.spotString), line)
+        XCTAssertTrue(line.contains(Month.shortNames[input.month - 1]), line)
+        XCTAssertTrue(line.contains(obs.timeLabel()), line)
+        XCTAssertTrue(line.contains(input.timeOfDay.label), line)
+        XCTAssertTrue(line.contains(input.slope.displayName), line)
+        XCTAssertTrue(line.contains(input.elevationDelta.displayName), line)
+        // Spoken form carries the same reading for VoiceOver.
+        XCTAssertTrue(receipt.spoken.contains("\(input.dryBulbF) degrees"), receipt.spoken)
+        XCTAssertTrue(receipt.spoken.contains(input.aspect.displayName), receipt.spoken)
+    }
+
+    /// The leak the receipt exists to close: the site factors are shared with the
+    /// Ignition tab, so an aspect scouted mid-shift and never set back is what the
+    /// next log freezes and broadcasts. The receipt has to move when it moves.
+    func testFreezeReceiptTracksAWhatIfLeftOnTheIgnitionTab() {
+        let ign = ignition(dry: 90, rh: 8)          // south / gentle / level
+        let w = model(ignition: ign, store: fresh("watch.receipt.whatif"))
+        w.confirmSite()
+        let at = Date()
+
+        let before = w.freezeReceipt(at: at, wind: nil).display
+        ign.aspect = .north                          // a what-if, left behind
+        let after = w.freezeReceipt(at: at, wind: nil).display
+        XCTAssertNotEqual(before, after, "receipt ignored a changed site factor")
+
+        // And the reading that actually freezes is the one the *second* receipt
+        // described — which is the whole point of showing it at the commit.
+        let obs = w.logObs(at: at, wind: nil)
+        XCTAssertEqual(obs.estimate.input.aspect, .north)
+        XCTAssertTrue(after.contains(obs.estimate.input.aspect.rawValue), after)
+    }
+
+    /// The obs time is shown with the band it resolves to, and that band comes
+    /// from the clock — not from a manual override left on the Ignition tab.
+    func testFreezeReceiptShowsTheBandTheClockResolves() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/Denver")!
+        let ign = ignition(dry: 90, rh: 8)
+        ign.timeOfDay = .night                       // manual override on the tab
+        let w = model(ignition: ign, store: fresh("watch.receipt.band"))
+        w.confirmSite()
+        let at = cal.date(from: DateComponents(year: 2026, month: 8, day: 12,
+                                               hour: 14, minute: 30))!
+
+        let receipt = w.freezeReceipt(at: at, wind: nil, calendar: cal)
+        let obs = w.logObs(at: at, calendar: cal, wind: nil)
+        XCTAssertEqual(obs.estimate.input.timeOfDay, .band1400_1559)   // clock wins
+        XCTAssertTrue(receipt.display.contains("1400-1559"), receipt.display)
+    }
+
     func testShiftPersistsAcrossInstances() {
         let store = fresh("watch.persist")
         let ign = ignition(dry: 85, rh: 12)

@@ -12,7 +12,7 @@ precedes any PR here.
 | PR | Contents | State |
 |---|---|---|
 | 1 | Shell + Humidity merge (native) | **In review** |
-| 2 | Obs loop — sheet, receipt, success screen, site factors (native) | Not started |
+| 2 | Obs loop — sheet, receipt, success screen, site factors (native) | **In review** |
 | 3 | Web twin + month-freeze parity fix | Not started |
 | 4 | Docs — CLAUDE.md guardrail, `DESIGN.md` §4, README, App Store copy | Not started |
 

@@ -53,7 +53,7 @@ public enum NotesExport {
         lines.append("")
         lines.append("PIG = IRPG Probability of Ignition, app-computed (not observed, not a forecast).")
         lines.append("Wet bulb shown only when slung from a wet bulb; RH otherwise from a meter.")
-        lines.append("Logged with Badwater Ignition - decision-support only, not affiliated with NWS/NWCG.")
+        lines.append("Logged with Plateworks Ignition - decision-support only, not affiliated with NWS/NWCG.")
         return finish(lines)
     }
 

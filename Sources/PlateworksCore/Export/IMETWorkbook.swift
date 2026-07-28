@@ -42,7 +42,7 @@ public enum IMETExport {
     /// matches the Notes and NWS-spot exports.
     public static let disclaimer =
         "Probability of Ignition = IRPG value, app-computed (not observed, not a forecast). "
-        + "Logged with Badwater Ignition - decision-support only, not affiliated with NWS/NWCG."
+        + "Logged with Plateworks Ignition - decision-support only, not affiliated with NWS/NWCG."
 
     /// Excel time-of-day serial: fraction of a day from local midnight, in `[0, 1)`.
     /// 09:00 → 0.375, 13:00 → 0.5416666666666666.

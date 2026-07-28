@@ -1,11 +1,11 @@
 "use strict";
-//====================== BadwaterCore port — pure engine ======================
-// This file is the web twin of Sources/BadwaterCore. It must stay free of DOM,
+//====================== PlateworksCore port — pure engine ======================
+// This file is the web twin of Sources/PlateworksCore. It must stay free of DOM,
 // state, storage, and clock access so Node can load it directly: the CI
 // conformance harness (conformance/check-web.js) executes every function below
 // against golden vectors generated from the Swift core. If you change anything
 // here, the harness tells you whether you still match the iOS app — and if you
-// change BadwaterCore, the regenerated vectors tell you to come back here.
+// change PlateworksCore, the regenerated vectors tell you to come back here.
 
 // Table A — reference fuel moisture (6 temp rows x 21 RH cols)
 const REF_GRID=[
@@ -125,7 +125,7 @@ function grouped(v){ return v.toLocaleString("en-US"); }
 function dateCode(ms){ const d=new Date(ms); return `${d.getMonth()+1}${d.getDate()}${d.getFullYear()%100}`; }
 function dateSlash(ms){ const d=new Date(ms); return `${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()%100}`; }
 
-//====================== Radio script (port of BadwaterCore RadioScript) ======================
+//====================== Radio script (port of PlateworksCore RadioScript) ======================
 // cur/prev: logged-obs records {min,temp,rh,pigU,pigS,wind,aspect,slope,elevationFeet,spokenLocation}
 function broadcastScript(addressee,cur,prev){
   const sent=[];
@@ -157,7 +157,7 @@ function broadcastScript(addressee,cur,prev){
 }
 function delta(d){ if(d===0)return", no change"; return d>0?`, up ${d}`:`, down ${-d}`; }
 
-//====================== IMET .xlsx (store-only zip, ported from BadwaterCore) ======================
+//====================== IMET .xlsx (store-only zip, ported from PlateworksCore) ======================
 const CRC_TABLE=(()=>{ const t=new Uint32Array(256); for(let i=0;i<256;i++){ let c=i; for(let k=0;k<8;k++){ c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); } t[i]=c>>>0; } return t; })();
 function crc32(bytes){ let c=0xFFFFFFFF; for(let i=0;i<bytes.length;i++){ c=CRC_TABLE[(c^bytes[i])&0xFF]^(c>>>8); } return (c^0xFFFFFFFF)>>>0; }
 function le16(v){ return [v&0xFF,(v>>>8)&0xFF]; }
@@ -187,7 +187,7 @@ function buildXlsx(shifts,coordLat,coordLon){
   const H='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
   const headers=["Time","Dry Bulb","Wet Bulb","RH (%)","Wind (MPH)","Probability of Ignition (Unshaded) (%)","Probability of Ignition (Shaded) (%)","Elevation","Aspect","Location","Notes"];
-  const disclaimer="Probability of Ignition = IRPG value, app-computed (not observed, not a forecast). Logged with Badwater Ignition - decision-support only, not affiliated with NWS/NWCG.";
+  const disclaimer="Probability of Ignition = IRPG value, app-computed (not observed, not a forecast). Logged with Plateworks Ignition - decision-support only, not affiliated with NWS/NWCG.";
   const col=i=>String.fromCharCode(65+i);
   const numC=(r,v)=>`<c r="${r}"><v>${v}</v></c>`;
   const strC=(r,v)=>`<c r="${r}" t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
@@ -252,7 +252,7 @@ function buildXlsx(shifts,coordLat,coordLon){
 //====================== Node export (conformance harness) ======================
 // In the browser these top-level declarations are shared with app.js via the
 // global lexical scope; in Node, require("./engine.js") returns this object.
-const BadwaterEngine={
+const PlateworksEngine={
   REF_GRID,refTempRow,refRhCol,referenceFM,
   CORR,ASPECTS,DELTAS,correction,
   PIG_U,PIG_S,pigTempRow,pigFfmCol,pig,
@@ -264,4 +264,4 @@ const BadwaterEngine={
   broadcastScript,delta,
   crc32,zipStore,buildXlsx,
 };
-if(typeof module!=="undefined"&&module.exports){ module.exports=BadwaterEngine; }
+if(typeof module!=="undefined"&&module.exports){ module.exports=PlateworksEngine; }

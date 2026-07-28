@@ -1,6 +1,6 @@
 import XCTest
 
-/// Black-box UI smoke tests: navigation, the RH → Ignition hand-off, and the
+/// Black-box UI smoke tests: navigation, the wet-bulb sling readout, and the
 /// Obs capture/log loop, driven through the accessibility identifiers set on the
 /// controls.
 ///
@@ -50,17 +50,16 @@ final class PlateworksIgnitionUITests: XCTestCase {
                       "Calculation chain strip missing on launch")
     }
 
-    func testHumidityTabAndHandoff() {
+    /// The shell is two tabs. A third would mean a screen came back without its
+    /// spec — most likely a re-split of the humidity calculation the weather
+    /// group now owns (`docs/UX_TWO_TAB.md` §4).
+    func testShellHasExactlyTwoTabs() {
         let app = launchApp()
-
-        app.tabBars.buttons["Humidity"].tap()
-        XCTAssertTrue(app.element("rh-readout").waitForExistence(timeout: 10),
-                      "RH readout missing on the Humidity tab")
-
-        // "Use in ignition calc" pushes RH into the Ignition tab and switches to it.
-        app.element("use-in-ignition").tap()
-        XCTAssertTrue(app.element("result-Unshaded").waitForExistence(timeout: 10),
-                      "Hand-off did not land on the Ignition tab")
+        XCTAssertTrue(app.tabBars.buttons["Ignition"].waitForExistence(timeout: 10),
+                      "Ignition tab missing")
+        XCTAssertTrue(app.tabBars.buttons["Obs"].exists, "Obs tab missing")
+        XCTAssertEqual(app.tabBars.buttons.count, 2,
+                       "Expected exactly two tabs — Ignition and Obs")
     }
 
     func testDryBulbIsAdjustable() {
@@ -73,23 +72,40 @@ final class PlateworksIgnitionUITests: XCTestCase {
                       "PIG result stopped rendering after adjusting dry bulb")
     }
 
-    func testWetBulbSourceRevealsWetBulbInput() {
+    /// Wet-bulb mode is where the absorbed Humidity screen lives: the wet-bulb
+    /// stepper plus everything a sling reading yields — RH, dew point, wet-bulb
+    /// depression — and the Alaska threshold switch. Direct mode shows none of
+    /// it, which is what keeps the everyday screen short.
+    func testWetBulbSourceRevealsTheFullSlingReading() {
         let app = launchApp()
-        // Switching the humidity source to "From wet bulb" reveals the wet-bulb
-        // stepper; the PIG results keep rendering with the derived RH.
+        // Direct mode (the launch default) carries none of the sling extras.
+        XCTAssertFalse(app.element("derived-rh").exists,
+                       "Derived RH showing in direct mode")
+        XCTAssertFalse(app.element("alaska-toggle").exists,
+                       "Alaska toggle showing in direct mode")
+
         let wetBulbSource = app.element("From wet bulb")
         XCTAssertTrue(wetBulbSource.waitForExistence(timeout: 10),
                       "Humidity source chip missing")
         wetBulbSource.tap()
+
         XCTAssertTrue(app.element("Wet bulb").waitForExistence(timeout: 10),
                       "Wet bulb stepper did not appear")
         XCTAssertTrue(app.element("derived-rh").exists,
-                      "Derived RH card did not appear in wet-bulb mode")
+                      "Derived RH did not appear in wet-bulb mode")
+        XCTAssertTrue(app.element("Dew point").exists,
+                      "Dew point missing — it moved here from the Humidity tab")
+        XCTAssertTrue(app.element("WB depression").exists,
+                      "Wet-bulb depression missing — it moved here from the Humidity tab")
+        XCTAssertTrue(app.element("alaska-toggle").exists,
+                      "Alaska thresholds toggle missing in wet-bulb mode")
         XCTAssertTrue(app.element("result-Unshaded").exists,
                       "PIG result stopped rendering in wet-bulb mode")
     }
 
-    func testWatchTabLogsAnObservation() {
+    /// The whole hourly loop: open the capture form, read the receipt, commit,
+    /// read the script, land back on the record with the reading as the hero.
+    func testWatchTabLogsAnObservationThroughTheCaptureSheet() {
         let app = launchApp()
 
         app.tabBars.buttons["Obs"].tap()
@@ -100,9 +116,25 @@ final class PlateworksIgnitionUITests: XCTestCase {
         // The first log of a shift is gated on an explicit site review.
         app.element("confirm-site").tap()
 
-        // Logging freezes the current reading into the shift: the hero (both PIG
-        // results + the radio line) appears and the empty state goes away.
+        // Capture is a sheet now, opened from the bottom bar.
+        app.element("open-capture").tap()
+        XCTAssertTrue(app.element("capture-sheet").waitForExistence(timeout: 10),
+                      "Capture sheet did not open")
+        XCTAssertTrue(app.element("pending-pig").exists, "Pending PIG preview missing")
+        XCTAssertTrue(app.element("obs-note").exists, "Obs note field missing")
+        XCTAssertTrue(app.element("Dry bulb").exists, "Dry bulb stepper missing in the capture sheet")
+        XCTAssertTrue(app.element("freeze-receipt").exists,
+                      "Freeze receipt missing above the commit button")
+
+        // Committing freezes the reading and presents the script to read out.
         app.element("log-observation").tap()
+        XCTAssertTrue(app.element("broadcast-success").waitForExistence(timeout: 10),
+                      "Post-log broadcast script did not appear")
+        XCTAssertTrue(app.element("copy-broadcast-success").exists,
+                      "Post-log script has no Copy action")
+
+        // Done returns to the record, with the new reading as the hero.
+        app.element("log-done").tap()
         XCTAssertTrue(app.element("result-Unshaded").waitForExistence(timeout: 10),
                       "Logged obs hero did not appear")
         XCTAssertTrue(app.element("result-Shaded").exists,
@@ -113,16 +145,36 @@ final class PlateworksIgnitionUITests: XCTestCase {
                        "Empty state still showing after logging an observation")
     }
 
-    func testWatchCaptureCardIsPresent() {
+    /// The record scroll carries no weather entry — that all moved into the
+    /// sheet, which is what keeps the most repeated action off the bottom of a
+    /// long page.
+    func testObsScrollIsRecordOnlyUntilCaptureOpens() {
         let app = launchApp()
 
         app.tabBars.buttons["Obs"].tap()
-        // The pending capture card is always available — note field, dry-bulb
-        // stepper, and the live PIG preview — so a reading can be built and logged.
-        XCTAssertTrue(app.element("obs-note").waitForExistence(timeout: 10),
-                      "Obs note field missing")
-        XCTAssertTrue(app.element("Dry bulb").exists, "Dry bulb stepper missing on Obs")
-        XCTAssertTrue(app.element("pending-pig").exists, "Pending PIG preview missing")
+        XCTAssertTrue(app.element("open-capture").waitForExistence(timeout: 10),
+                      "Capture entry point missing from the Obs tab")
+        XCTAssertFalse(app.element("obs-note").exists,
+                       "Note field is on the record scroll — capture should be in the sheet")
+        XCTAssertFalse(app.element("freeze-receipt").exists,
+                       "Freeze receipt is on the record scroll — it belongs at the commit")
+    }
+
+    /// The site factors that every logged obs freezes are visible where the
+    /// operator is asked to confirm the site — they used to be Ignition-only
+    /// while the gate still said "review the site factors".
+    func testSiteFactorsAreVisibleOnTheObsTab() {
+        let app = launchApp()
+
+        app.tabBars.buttons["Obs"].tap()
+        // ChipPicker identifies each chip by its label, so assert on the chips
+        // themselves — "Below"/"Level"/"Above" and "31%+" are unique to these rows.
+        XCTAssertTrue(app.element("Level").waitForExistence(timeout: 10),
+                      "Elevation-delta chips missing from Site & radio")
+        XCTAssertTrue(app.element("Above").exists,
+                      "Elevation-delta chips missing from Site & radio")
+        XCTAssertTrue(app.element("31%+").exists, "Slope chips missing from Site & radio")
+        XCTAssertTrue(app.element("0–30%").exists, "Slope chips missing from Site & radio")
     }
 
     /// The GPS autofill button is present, and the hand-typed position fields sit

@@ -26,9 +26,10 @@ plain-language fire-behavior interpretation.
 - Enter temperature, RH, month, time of day, aspect, slope, and elevation vs.
   the weather site — results update live, no "calculate" button.
 - Nighttime fuel-moisture handling built in.
-- Relative-humidity calculator from dry-bulb and wet-bulb temperatures across
-  all NWCG elevation bands (with Alaska thresholds); one tap sends the result
-  into the ignition calculator.
+- Relative humidity, dew point, and wet-bulb depression from dry-bulb and
+  wet-bulb temperatures across all NWCG elevation bands (with Alaska
+  thresholds) — computed inline, so a sling reading feeds the ignition
+  calculation without being re-typed.
 - Big, gloved-hand controls; a true-black night mode to protect dark
   adaptation on the line.
 - 100% offline. No account, no tracking, no data collected.

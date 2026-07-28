@@ -3,8 +3,8 @@ import PlateworksCore
 @testable import PlateworksIgnition
 
 /// Unit tests for the view-model layer. These run in the simulator (the models
-/// use the Observation framework), and exercise the real persistence, wet-bulb
-/// RH derivation, and hand-off logic rather than the UI.
+/// use the Observation framework), and exercise the real persistence and the
+/// wet-bulb psychrometrics rather than the UI.
 @MainActor
 final class IgnitionModelTests: XCTestCase {
 
@@ -68,16 +68,6 @@ final class IgnitionModelTests: XCTestCase {
         XCTAssertEqual(b.elevationDelta, .above)
     }
 
-    func testApplyHumidityClampsAndSets() {
-        let m = IgnitionModel(store: freshStore())
-        m.applyHumidity(150)
-        XCTAssertEqual(m.relativeHumidity, 100)
-        m.applyHumidity(-5)
-        XCTAssertEqual(m.relativeHumidity, 0)
-        m.applyHumidity(37)
-        XCTAssertEqual(m.relativeHumidity, 37)
-    }
-
     func testNightModeUsesPlusFive() {
         let m = IgnitionModel(store: freshStore())
         m.dryBulbF = 95
@@ -128,13 +118,69 @@ final class IgnitionModelTests: XCTestCase {
         XCTAssertLessThanOrEqual(m.effectiveRelativeHumidity, 100)   // no impossible >100% RH
     }
 
-    func testApplyHumiditySwitchesToDirect() {
+    // MARK: - Absorbed Humidity screen (derived psychrometrics + Alaska bands)
+
+    func testDerivedHumidityExposesTheFullSlingReading() {
         let m = IgnitionModel(store: freshStore())
         m.rhSource = .wetBulb
-        m.applyHumidity(37)
-        XCTAssertEqual(m.rhSource, .direct)
-        XCTAssertEqual(m.relativeHumidity, 37)
-        XCTAssertEqual(m.effectiveRelativeHumidity, 37)
+        m.dryBulbF = 80
+        m.wetBulbF = 65
+        m.elevationBand = .band1
+        let result = try! XCTUnwrap(m.derivedHumidity)
+        let expected = Psychrometrics.compute(dryBulbF: 80, wetBulbF: 65, band: .band1)
+        // One computation behind all three readouts: RH, dew point, depression.
+        XCTAssertEqual(result.relativeHumidity, expected.relativeHumidity)
+        XCTAssertEqual(result.dewPointF, expected.dewPointF)
+        XCTAssertEqual(result.wetBulbDepressionF, 15)          // 80 − 65
+        // And the RH the chain consumes is the same number the row displays.
+        XCTAssertEqual(m.effectiveRelativeHumidity, result.relativeHumidity)
+    }
+
+    func testDerivedHumidityIsNilInDirectMode() {
+        let m = IgnitionModel(store: freshStore())
+        m.rhSource = .direct
+        m.relativeHumidity = 22
+        // A typed RH has no wet bulb, so it has no dew point or depression to
+        // show — inventing them would present arithmetic as a measurement.
+        XCTAssertNil(m.derivedHumidity)
+        XCTAssertEqual(m.effectiveRelativeHumidity, 22)
+    }
+
+    func testBandLabelRespectsAlaska() {
+        let m = IgnitionModel(store: freshStore())
+        m.alaska = false
+        XCTAssertEqual(m.label(for: .band2), ElevationBand.band2.conusLabel)
+        m.alaska = true
+        XCTAssertEqual(m.label(for: .band2), ElevationBand.band2.alaskaLabel)
+        // Labelling only: the same band still yields the same psychrometrics.
+        m.rhSource = .wetBulb
+        m.dryBulbF = 80
+        m.wetBulbF = 65
+        m.elevationBand = .band2
+        let underAlaska = m.derivedHumidity?.relativeHumidity
+        m.alaska = false
+        XCTAssertEqual(m.derivedHumidity?.relativeHumidity, underAlaska)
+    }
+
+    func testAlaskaPersistsAndMigratesFromTheHumidityScreensKey() {
+        // A crew that had Alaska thresholds on in the old Humidity tab keeps them
+        // — the setting is regional and re-finding it mid-shift is the failure.
+        let legacy = freshStore("alaskaMigration")
+        legacy.set(true, forKey: "humidity.alaska")
+        XCTAssertTrue(IgnitionModel(store: legacy).alaska)
+
+        // Once owned here it round-trips under its own key...
+        let store = freshStore("alaskaPersist")
+        let a = IgnitionModel(store: store)
+        XCTAssertFalse(a.alaska)                      // default off
+        a.alaska = true
+        XCTAssertTrue(IgnitionModel(store: store).alaska)
+
+        // ...and an explicit *off* here is not overridden by a stale legacy on.
+        store.set(true, forKey: "humidity.alaska")
+        let b = IgnitionModel(store: store)
+        b.alaska = false
+        XCTAssertFalse(IgnitionModel(store: store).alaska)
     }
 
     // MARK: - Weather-edit tracking (staleness, red-team #3)
@@ -246,39 +292,16 @@ final class IgnitionModelTests: XCTestCase {
         XCTAssertEqual(b.wetBulbF, 58)
         XCTAssertEqual(b.elevationBand, .band4)
     }
-}
 
-@MainActor
-final class HumidityModelTests: XCTestCase {
-
-    func testResultUpdatesAndClampsWetBulb() {
-        let store = UserDefaults(suiteName: "test.humidity")!
-        store.removePersistentDomain(forName: "test.humidity")
-        let m = HumidityModel(store: store)
-        m.band = .band1
+    /// The golden cell the deleted `HumidityModelTests` guarded, re-asserted
+    /// against the model that now owns the calculation — so absorbing the
+    /// Humidity screen didn't quietly drop its one provenance-checked value.
+    func testSeaLevelGoldenCellSurvivesTheMerge() {
+        let m = IgnitionModel(store: freshStore())
+        m.rhSource = .wetBulb
+        m.elevationBand = .band1
         m.dryBulbF = 61
         m.wetBulbF = 45
-        XCTAssertEqual(m.result.relativeHumidity, 23, accuracy: 1)   // PMS 437 sea-level cell
-
-        // Lowering dry bulb below wet bulb clamps the wet bulb.
-        m.dryBulbF = 40
-        XCTAssertLessThanOrEqual(m.wetBulbF, 40)
-
-        // Raising the wet bulb above the dry bulb clamps it too.
-        m.dryBulbF = 61
-        m.wetBulbF = 80
-        XCTAssertEqual(m.wetBulbF, 61)
-        XCTAssertLessThanOrEqual(m.result.relativeHumidity, 100)
-    }
-
-    func testBandLabelRespectsAlaska() {
-        let store = UserDefaults(suiteName: "test.humidity2")!
-        store.removePersistentDomain(forName: "test.humidity2")
-        let m = HumidityModel(store: store)
-        m.band = .band2
-        m.alaska = false
-        XCTAssertEqual(m.label(for: .band2), ElevationBand.band2.conusLabel)
-        m.alaska = true
-        XCTAssertEqual(m.label(for: .band2), ElevationBand.band2.alaskaLabel)
+        XCTAssertEqual(m.effectiveRelativeHumidity, 23, accuracy: 1)   // PMS 437 sea-level cell
     }
 }

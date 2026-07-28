@@ -79,7 +79,7 @@ struct IgnitionView: View {
     /// one block rather than shoving the sections below it. Carries the shared cue
     /// — this same weather is what the Watch tab logs.
     private var weatherSection: some View {
-        WeatherInputGroup(model: model, sharedWith: "Watch", showsDerivedHumidity: true)
+        WeatherInputGroup(model: model, sharedWith: "Obs", showsDerivedHumidity: true)
             .padding(Metric.cardSpacing)
             .background(PlateworksColor.surfaceSunk, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
             .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(PlateworksColor.hairline))

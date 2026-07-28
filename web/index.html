@@ -105,6 +105,13 @@
   .statcard .num{font-family:var(--round);font-weight:700;font-size:26px;font-variant-numeric:tabular-nums;}
 
   .derived{display:flex;align-items:baseline;justify-content:space-between;background:var(--surface);border:1px solid var(--hair);border-radius:16px;padding:12px 14px;}
+  /* Alaska elevation thresholds — a labelling switch beside the band chips. */
+  .aktoggle{display:flex;align-items:center;gap:8px;min-height:44px;font-size:13px;color:var(--ink);cursor:pointer;}
+  .aktoggle input{width:18px;height:18px;accent-color:var(--teal);}
+  /* Everything the Log tap will freeze, directly above the commit button. */
+  .receipt{background:var(--sunk);border:1px solid var(--hair);border-radius:12px;padding:9px 11px;
+    font-family:var(--mono);font-size:11px;line-height:1.5;color:var(--ink);}
+  .receipt .lbl{display:block;margin-bottom:2px;}
   .derived .big{font-family:var(--round);font-weight:800;font-size:30px;color:var(--teal);font-variant-numeric:tabular-nums;}
 
   .strip{display:flex;align-items:center;gap:8px;min-height:34px;font-family:var(--mono);font-size:10.5px;color:var(--muted);}
@@ -214,7 +221,6 @@
   <div class="screen" id="screen"></div>
   <div class="toast" id="toast" style="display:none"></div>
   <div class="tabbar" id="tabbar">
-    <button class="tab" data-action="tab" data-val="humidity"><span class="ic">💧</span>Humidity</button>
     <button class="tab" data-action="tab" data-val="ignition"><span class="ic">🔥</span>Ignition</button>
     <button class="tab" data-action="tab" data-val="watch"><span class="ic">🔭</span>Obs</button>
   </div>

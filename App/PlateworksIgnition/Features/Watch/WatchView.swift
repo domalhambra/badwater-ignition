@@ -11,37 +11,40 @@ import WidgetKit
 
 /// The **Watch** screen (Weather Watch — the shift observation log).
 ///
-/// The full loop: the latest-reading hero and its frozen radio broadcast, a
-/// shift trend, the shift log (with delete + undo), the site & radio block
-/// (``SiteEditor``, which also owns the GPS position autofill), the pending-obs
-/// capture card (weather is the shared ``IgnitionModel``,
-/// so it mirrors the Ignition tab), and the shift exports (IMET `.xlsx`, NWS
-/// spot, Notes). The first log of a shift is gated on an explicit site review, so
-/// a persisted default can never silently feed a broadcast.
+/// This screen is the **record**: the latest-reading hero and its frozen radio
+/// broadcast, a shift trend, the shift log (with delete + undo), the site &
+/// radio block (``SiteEditor``, which owns the IMET header, the GPS position
+/// autofill, and the shared site factors), and the shift exports (IMET `.xlsx`,
+/// NWS spot, Notes).
+///
+/// Entering a reading is *not* here — it happens in ``ObsFormSheet``, opened by
+/// the bottom bar. The capture controls used to sit ninth in this scroll, below
+/// everything above, which put the app's most repeated action behind the whole
+/// record; now the scroll is only what has already been frozen. The first log of
+/// a shift is still gated on an explicit site review, so a persisted default can
+/// never silently feed a broadcast — an unconfirmed site can't open the form.
 @MainActor
 struct WatchView: View {
     @Bindable var model: WeatherWatchModel
     @Bindable var ignition: IgnitionModel
+    /// Raised by the log-observation App Intent. That intent means "start a
+    /// log", so arriving from it opens the capture form instead of dropping the
+    /// operator at the top of the record with the form one tap away — but it
+    /// still respects the site gate, which is the one thing that may stand
+    /// between a launch and a broadcast.
+    var startCapture: Binding<Bool> = .constant(false)
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var scenePhase
 
-    /// The timestamp a Log tap will record. Seeded to "now" and **re-seeded** as
-    /// the clock moves (on the tick, on appear, on foreground) unless the
-    /// operator has taken it over by typing or nudging — see ``obsTimeIsManual``.
-    @State private var pendingTime = Date()
-    /// The value this view last auto-seeded ``pendingTime`` to. Comparing the two
-    /// is how a manual edit is detected without threading a callback through
-    /// `ObsTimeField`: any type or nudge moves `pendingTime` away from this.
-    @State private var autoSeededObsTime = Date()
-    /// The optional caveat for this one reading; cleared after it's logged.
-    @State private var note = ""
     /// The workbook bytes for a presented export sheet, built once when the
     /// export is requested rather than on every body pass.
     @State private var workbookDocument: IMETWorkbookDocument?
     /// Whether an undo affordance for the last delete is showing.
     @State private var showUndo = false
-    /// The logged observation being corrected in the edit sheet (nil = closed).
-    @State private var editingObs: WeatherObs?
+    /// The observation form, when one is up: capturing the next reading or
+    /// correcting a logged one (nil = closed). Both go through ``ObsFormSheet``,
+    /// so the two paths can't drift into different layouts.
+    @State private var formPresentation: ObsFormSheet.Presentation?
     /// Drives the IMET `.xlsx` export sheet.
     @State private var exportingWorkbook = false
     /// Guards the new-shift action (which archives the current shift) behind a confirm.
@@ -111,8 +114,7 @@ struct WatchView: View {
                 }
                 if canTrend { trendSection }
                 if hasObs { shiftLogSection }
-                SiteEditor(model: model)
-                captureCard
+                SiteEditor(model: model, ignition: ignition)
                 if hasExportableData { exportSection }
                 if !model.history.isEmpty { historySection }
                 if hasObs { newShiftRow }
@@ -121,12 +123,26 @@ struct WatchView: View {
             .padding(Metric.screenPadding)
         }
         .safeAreaInset(edge: .bottom) { logBar }
-        .sheet(item: $editingObs) { obs in
-            ObsEditSheet(original: obs) { time, dry, rh, wet, wind, editedNote in
-                model.updateObs(id: obs.id, timestamp: time, dryBulbF: dry,
-                                relativeHumidity: rh, wetBulbF: wet, wind: wind, note: editedNote)
-                rescheduleCadence()
-            }
+        .sheet(item: $formPresentation) { presentation in
+            ObsFormSheet(
+                presentation: presentation, model: model, ignition: ignition,
+                onLogged: { _ in
+                    logHaptic += 1
+                    // Permission is asked here, at the point of value — the first
+                    // log — rather than on a cold launch before the operator
+                    // knows what the app does.
+                    #if canImport(UserNotifications)
+                    Task {
+                        await cadence.requestAuthorizationIfNeeded()
+                        cadence.reschedule(latestObs: model.latest?.timestamp)
+                    }
+                    #endif
+                    // Outside the #if: the widget follows the record, not the
+                    // notification permission, and this is the mutation it
+                    // exists for.
+                    reloadGlanceSurfaces()
+                },
+                onSaved: { rescheduleCadence() })
         }
         .background(PlateworksColor.background)
         .navigationTitle("Obs")
@@ -139,9 +155,20 @@ struct WatchView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in if phase == .active { tick() } }
-        .onAppear { tick() }
+        .onAppear { tick(); consumeStartCapture() }
+        .onChange(of: startCapture.wrappedValue) { _, _ in consumeStartCapture() }
         .sensoryFeedback(.success, trigger: logHaptic)
         .sensoryFeedback(.warning, trigger: deleteHaptic)
+    }
+
+    /// Open the capture form once, if an intent asked for it. Consumed either
+    /// way — a gated shift leaves the operator on the record, where the Confirm
+    /// site action is, rather than re-opening the form on every appear.
+    private func consumeStartCapture() {
+        guard startCapture.wrappedValue else { return }
+        startCapture.wrappedValue = false
+        guard !model.needsSiteConfirmation else { return }
+        formPresentation = .capture
     }
 
     /// Re-point the due reminder at the shift's current latest observation, and
@@ -195,46 +222,12 @@ struct WatchView: View {
         return nil
     }
 
-    /// Advance the wall-clock reference and re-seed the pending obs time with it.
+    /// Advance the wall-clock reference the due countdown reads from. The obs
+    /// timestamp is no longer this view's concern — it is seeded and tracked
+    /// inside ``ObsFormSheet``, which only exists while a reading is being
+    /// entered.
     private func tick() {
         now = Date()
-        reseedObsTime(now)
-    }
-
-    // MARK: - Pending obs time
-
-    /// True once the operator has typed or nudged the obs time — detected by the
-    /// value having moved away from what this view last auto-seeded. Auto-seeding
-    /// then stands down until the next log.
-    ///
-    /// Compared at **minute** granularity, not by equality: `ObsTimeField` echoes
-    /// the value back through its `"HH:MM"` text field, and that round trip zeroes
-    /// the seconds. An exact comparison would read the echo as a manual edit and
-    /// stop the clock tracking within one tick of the view appearing — the very
-    /// bug this mechanism exists to fix. Every real edit (typing a different time,
-    /// a ±5 m nudge) moves the value by at least a minute.
-    private var obsTimeIsManual: Bool {
-        !Calendar.current.isDate(pendingTime, equalTo: autoSeededObsTime, toGranularity: .minute)
-    }
-
-    /// Track the wall clock unless the operator has taken the time over.
-    ///
-    /// Without this the obs timestamp was seeded exactly once, when the view was
-    /// first constructed, and never moved except by a log. An app opened at 0900
-    /// and returned to at 1400 stamped **0900** — and `pendingObs` derives the
-    /// month and the IRPG time-of-day band from that timestamp, so the reading
-    /// was filed under the wrong correction column and produced the wrong PIG.
-    private func reseedObsTime(_ date: Date) {
-        guard !obsTimeIsManual else { return }
-        pendingTime = date
-        autoSeededObsTime = date
-    }
-
-    /// Hand the obs time back to the clock — after a log, or after a new shift.
-    private func resetObsTimeToNow() {
-        let t = Date()
-        pendingTime = t
-        autoSeededObsTime = t
     }
 
     // MARK: - Next-obs-due annunciator
@@ -460,7 +453,7 @@ struct WatchView: View {
                 }
             }
             Spacer(minLength: 8)
-            Button { editingObs = obs } label: {
+            Button { formPresentation = .edit(obs) } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(PlateworksColor.accent)
@@ -487,81 +480,6 @@ struct WatchView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(PlateworksColor.surface, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PlateworksColor.hairline))
-    }
-
-    // MARK: - Pending capture card (M1)
-
-    /// The pending observation the Log button will freeze — computed from the live
-    /// inputs and the chosen obs time, so the PIG preview and the freeze agree.
-    private var captureCard: some View {
-        let pending = model.pendingObs(at: pendingTime)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Pending obs").fieldLabel()
-                Spacer()
-                Text("→ PIG \(pending.estimate.unshaded.probabilityOfIgnition) / \(pending.estimate.shaded.probabilityOfIgnition)")
-                    .font(PlateworksFont.label).kerning(0.4)
-                    .foregroundStyle(PlateworksColor.accent)
-                    .accessibilityIdentifier("pending-pig")
-            }
-            freshnessStrip
-            ObsTimeField(time: $pendingTime)
-            futureTimeStrip
-            WeatherInputGroup(model: ignition, sharedWith: "Ignition", showsDerivedHumidity: false)
-            noteField
-        }
-        .padding(13)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PlateworksColor.surfaceSunk, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
-        .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(PlateworksColor.hairline))
-    }
-
-    /// How fresh the dry-bulb / RH reading is — a status annunciator that turns to
-    /// caution amber and offers "Mark current" once the reading is older than the
-    /// staleness window, so a fresh timestamp can't silently freeze hours-old
-    /// weather. Always present at a fixed height, so it never shifts the card.
-    private var freshnessStrip: some View {
-        let stale = model.isPendingWeatherStale()
-        let ageMinutes = model.pendingWeatherAge().map { Int($0 / 60) }
-        return StatusStrip(
-            icon: stale ? "exclamationmark.triangle.fill" : "clock",
-            message: freshnessText(stale: stale, ageMinutes: ageMinutes),
-            caution: stale,
-            actionTitle: stale ? "Mark current" : nil,
-            action: stale ? { model.confirmPendingWeatherCurrent() } : nil,
-            identifier: "weather-freshness",
-            actionIdentifier: "mark-weather-current")
-    }
-
-    /// A hand-set obs time in the future would file the reading under a
-    /// time-of-day band that hasn't happened, and make it the "latest" obs the
-    /// hero and the due countdown read from. Back-filling a *past* time is
-    /// legitimate and stays silent.
-    @ViewBuilder private var futureTimeStrip: some View {
-        if pendingTime.timeIntervalSince(now) > 60 {
-            StatusStrip(
-                icon: "clock.badge.exclamationmark",
-                message: "Obs time is ahead of the clock — this reading would be filed in the future.",
-                caution: true, actionTitle: "Use now",
-                action: { resetObsTimeToNow() },
-                identifier: "obs-time-future", actionIdentifier: "obs-time-use-now")
-        }
-    }
-
-    private func freshnessText(stale: Bool, ageMinutes: Int?) -> String {
-        guard let ageMinutes else { return "Weather not read yet" }
-        if stale { return "Weather read \(ageMinutes) min ago — confirm current" }
-        return ageMinutes == 0 ? "Weather just read" : "Weather read \(ageMinutes) min ago"
-    }
-
-    private var noteField: some View {
-        TextField("Note (optional) — e.g. sun on thermometer", text: $note, axis: .vertical)
-            .font(PlateworksFont.body)
-            .lineLimit(1...3)
-            .padding(11)
-            .background(PlateworksColor.surface, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(PlateworksColor.hairline))
-            .accessibilityIdentifier("obs-note")
     }
 
     // MARK: - Exports (M4)
@@ -701,8 +619,9 @@ struct WatchView: View {
                                 isPresented: $confirmNewShift, titleVisibility: .visible) {
                 Button("Start new shift") {
                     model.startNewShift()
-                    resetObsTimeToNow()
-                    note = ""
+                    // The obs time and the pending note used to be reset here.
+                    // They now live in ``ObsFormSheet``, which is created fresh
+                    // each time it opens — a new shift can't inherit either.
                     showUndo = false
                     // The shift is over; its pending reminder is meaningless.
                     #if canImport(UserNotifications)
@@ -756,305 +675,54 @@ struct WatchView: View {
 
     // MARK: - Log bar
 
-    /// Fixed bottom action: freezes the current estimate — plus the wind, note, and
-    /// chosen obs time — into the shift, then resets for the next reading. Disabled
-    /// until the site has been confirmed for the shift (the first-log gate).
+    /// Fixed bottom action: opens the capture sheet, where the reading is built
+    /// and frozen. Disabled until the site has been confirmed for the shift, so
+    /// the first-log gate still holds — an unconfirmed site can't even open the
+    /// form, let alone commit through it.
+    ///
+    /// The bar used to carry the whole capture card's commit; the reading itself
+    /// lived nine sections up the scroll. Now the button that starts the hourly
+    /// loop is the same one that ends it.
     private var logBar: some View {
         let gated = model.needsSiteConfirmation
         return Button {
-            model.logObs(at: pendingTime, wind: ignition.wind, note: note.isEmpty ? nil : note)
-            logHaptic += 1
-            note = ""
-            // Permission is asked here, at the point of value — the first log —
-            // rather than on a cold launch before the operator knows what the
-            // app does.
-            #if canImport(UserNotifications)
-            Task {
-                await cadence.requestAuthorizationIfNeeded()
-                cadence.reschedule(latestObs: model.latest?.timestamp)
-            }
-            #endif
-            // Outside the #if: the widget follows the record, not the
-            // notification permission, and this is the mutation it exists for.
-            reloadGlanceSurfaces()
-            // Hand the time back to the clock. This used to pre-fill the *next*
-            // hourly slot (`pendingTime + 1 h`), which forward-dates the reading:
-            // a second tap — a glove double-tap, a correction, a back-fill —
-            // stamped an observation in the future, and `obsDueStrip` then
-            // counted down from a `latest.timestamp` that hadn't happened yet.
-            // Announcing when the next obs is due is the due strip's job, not
-            // the timestamp's.
-            resetObsTimeToNow()
+            formPresentation = .capture
         } label: {
-            HStack(spacing: 10) {
-                Text(gated ? "Confirm site to log" : "Log Observation")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                if !gated {
-                    Text("· \(clock(pendingTime))")
-                        .font(PlateworksFont.label).monospacedDigit().opacity(0.85)
+            Text(gated ? "Confirm site to log" : "Log Observation")
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 56)
+                .background(scheme == .dark ? Color.clear : PlateworksColor.accent,
+                            in: RoundedRectangle(cornerRadius: 16))
+                .overlay {
+                    if scheme == .dark {
+                        RoundedRectangle(cornerRadius: 16).strokeBorder(PlateworksColor.accent, lineWidth: 1.5)
+                    }
                 }
-            }
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .background(scheme == .dark ? Color.clear : PlateworksColor.accent,
-                        in: RoundedRectangle(cornerRadius: 16))
-            .overlay {
-                if scheme == .dark {
-                    RoundedRectangle(cornerRadius: 16).strokeBorder(PlateworksColor.accent, lineWidth: 1.5)
-                }
-            }
-            .foregroundStyle(scheme == .dark ? PlateworksColor.accent : Color.white)
+                .foregroundStyle(scheme == .dark ? PlateworksColor.accent : Color.white)
         }
         .buttonStyle(.plain)
         .disabled(gated)
         .opacity(gated ? 0.5 : 1)
-        .accessibilityIdentifier("log-observation")
+        .accessibilityIdentifier("open-capture")
         .padding(.horizontal, Metric.screenPadding)
         .padding(.top, 10).padding(.bottom, 8)
         .background(PlateworksColor.surface)
         .overlay(alignment: .top) { PlateworksColor.hairline.frame(height: 1) }
     }
 
-    /// Local `"HH:MM"` for the obs-time label on the Log button.
+    /// Local `"HH:MM"` for the due-strip labels.
     private func clock(_ date: Date) -> String {
         let c = Calendar.current.dateComponents([.hour, .minute], from: date)
         return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
     }
 }
 
-/// The observation-time control: tap the value to **type** a time directly
-/// ("1435" or "14:35"), or nudge it ±5 minutes. Two-way bound to the pending-obs
-/// timestamp, so typing, nudging, and the reset-to-now after a log all agree.
-@MainActor
-private struct ObsTimeField: View {
-    @Binding var time: Date
-    @State private var text = ""
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text("Obs time").fieldLabel()
-            HStack(spacing: 8) {
-                TextField("HH:MM", text: $text)
-                    .readout(32, weight: .bold)
-                    // .numbersAndPunctuation, not .numberPad: the field accepts
-                    // "14:35" as well as "1435", and the number pad has no colon.
-                    .fieldKeyboard(.signedNumber)
-                    .frame(maxWidth: 92)
-                    .accessibilityIdentifier("obs-time-field")
-                    .onChange(of: text) { _, v in
-                        if let hm = parseHourMinute(v) { time = settingHourMinute(time, hm.0, hm.1) }
-                    }
-                Spacer(minLength: 6)
-                nudge("−5m", -5)
-                nudge("+5m", 5)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PlateworksColor.surface, in: RoundedRectangle(cornerRadius: Metric.cardRadius))
-        .overlay(RoundedRectangle(cornerRadius: Metric.cardRadius).strokeBorder(PlateworksColor.hairline))
-        .onAppear { text = formatHourMinute(time) }
-        .onChange(of: time) { _, t in
-            // Resync the field when the time changed from a nudge or a post-log
-            // reset — but not from the user's own typing (parse already matches).
-            let c = Calendar.current.dateComponents([.hour, .minute], from: t)
-            let parsed = parseHourMinute(text)
-            if parsed?.0 != c.hour || parsed?.1 != c.minute { text = formatHourMinute(t) }
-        }
-        .accessibilityIdentifier("obs-time")
-    }
-
-    private func nudge(_ label: String, _ minutes: Int) -> some View {
-        Button { time = shiftingMinutes(time, minutes) } label: {
-            Text(label)
-                .font(PlateworksFont.labelSmall).fontWeight(.bold)
-                .foregroundStyle(PlateworksColor.ink)
-                .frame(minWidth: 46, minHeight: Metric.tapTarget)
-                .background(PlateworksColor.surfaceSunk, in: RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-/// Parse `"HH:MM"` / `"HHMM"` / `"H"` into clamped (hour, minute), or nil if the
-/// text doesn't yield a valid clock time (so a half-typed field leaves the time
-/// alone).
-private func parseHourMinute(_ s: String) -> (Int, Int)? {
-    let cleaned = s.filter { $0.isNumber || $0 == ":" }
-    var h = 0, m = 0
-    if cleaned.contains(":") {
-        let parts = cleaned.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-        h = Int(parts[0]) ?? 0
-        m = parts.count > 1 ? (Int(parts[1]) ?? 0) : 0
-    } else {
-        let digits = cleaned.filter { $0.isNumber }
-        guard !digits.isEmpty else { return nil }
-        if digits.count <= 2 {
-            h = Int(digits) ?? 0
-        } else {
-            h = Int(digits.prefix(digits.count - 2)) ?? 0
-            m = Int(digits.suffix(2)) ?? 0
-        }
-    }
-    guard (0...23).contains(h), (0...59).contains(m) else { return nil }
-    return (h, m)
-}
-
-private func formatHourMinute(_ date: Date) -> String {
-    let c = Calendar.current.dateComponents([.hour, .minute], from: date)
-    return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
-}
-
-private func settingHourMinute(_ base: Date, _ h: Int, _ m: Int) -> Date {
-    Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: base) ?? base
-}
-
-private func shiftingMinutes(_ base: Date, _ minutes: Int) -> Date {
-    Calendar.current.date(byAdding: .minute, value: minutes, to: base) ?? base
-}
-
-/// The edit sheet for a logged observation — correct a mis-entered reading, time,
-/// wind, or note without deleting and re-logging (the crew's "one wrong digit"
-/// fix path). Its inputs are isolated `@State` seeded from the obs, so editing
-/// never touches the live Ignition tab or the pending obs. `rhSource` is fixed to
-/// how the reading was taken: a slung obs edits its wet bulb (RH / dew point
-/// re-derive against the obs's own band); a direct obs edits RH.
-@MainActor
-private struct ObsEditSheet: View {
-    let original: WeatherObs
-    /// Commits the corrected fields; the parent calls `model.updateObs`, which
-    /// recomputes the estimate, re-renders this obs's broadcast, and persists.
-    let onSave: (_ timestamp: Date, _ dryBulbF: Int, _ relativeHumidity: Int,
-                 _ wetBulbF: Int, _ wind: Wind?, _ note: String) -> Void
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var time: Date
-    @State private var dryBulb: Int
-    @State private var rh: Int
-    @State private var wetBulb: Int
-    @State private var windLow: Int
-    @State private var windHigh: Int
-    @State private var gust: Int
-    @State private var direction: Wind.Direction
-    @State private var note: String
-
-    init(original: WeatherObs,
-         onSave: @escaping (Date, Int, Int, Int, Wind?, String) -> Void) {
-        self.original = original
-        self.onSave = onSave
-        let input = original.estimate.input
-        _time = State(initialValue: original.timestamp)
-        _dryBulb = State(initialValue: input.dryBulbF)
-        _rh = State(initialValue: input.relativeHumidity)
-        // Reconstruct the wet bulb from the frozen depression (slung obs only; a
-        // direct obs has no depression, so this seeds to the dry bulb).
-        _wetBulb = State(initialValue: input.dryBulbF - (original.humidity?.wetBulbDepressionF ?? 0))
-        let w = original.wind
-        _windLow = State(initialValue: w?.speed?.low ?? 0)
-        _windHigh = State(initialValue: w?.speed?.high ?? 0)
-        _gust = State(initialValue: w?.gust ?? 0)
-        _direction = State(initialValue: w?.direction ?? .north)
-        _note = State(initialValue: original.note ?? "")
-    }
-
-    private var isSlung: Bool { original.rhSource == .wetBulb }
-
-    /// A corrected timestamp in the future would re-file the reading under an
-    /// IRPG time-of-day band that hasn't happened, and make it the "latest" obs
-    /// the hero and the due countdown read from — the same hazard the capture
-    /// card guards, which this sheet previously did not. Correcting a reading
-    /// *backwards* is the normal case and stays silent.
-    @ViewBuilder private var editFutureTimeStrip: some View {
-        if time.timeIntervalSinceNow > 60 {
-            StatusStrip(
-                icon: "clock.badge.exclamationmark",
-                message: "That time is ahead of the clock — this reading would be filed in the future.",
-                caution: true, actionTitle: "Use now",
-                action: { time = Date() },
-                identifier: "edit-time-future", actionIdentifier: "edit-time-use-now")
-        }
-    }
-
-    /// Rebuild the edited wind, mirroring `IgnitionModel.wind` (no high speed ⇒
-    /// light/variable, still carrying any gust) — but preserve "not recorded"
-    /// (`nil`) for an obs that never had wind and still has none entered, so a
-    /// dry-bulb-only correction can't fabricate a light-and-variable broadcast.
-    private var editedWind: Wind? {
-        let g = gust > 0 ? gust : nil
-        guard windHigh > 0 else {
-            return (original.wind == nil && g == nil) ? nil : .lightVariable(gust: g)
-        }
-        return .measured(Wind.SpeedRange(low: min(windLow, windHigh), high: windHigh),
-                         direction, gust: g)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Metric.cardSpacing) {
-                    Text("Correcting the \(formatHourMinute(original.timestamp)) reading — recomputes PIG. Neighboring broadcasts are unchanged.")
-                        .font(PlateworksFont.labelSmall).foregroundStyle(PlateworksColor.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    ObsTimeField(time: $time)
-                    editFutureTimeStrip
-
-                    HStack(spacing: 10) {
-                        StepperCard(label: "Dry bulb", unit: "°F", value: $dryBulb, range: 10...130)
-                        if isSlung {
-                            StepperCard(label: "Wet bulb", unit: "°F", value: $wetBulb, range: 10...130)
-                        } else {
-                            StepperCard(label: "Rel. humidity", unit: "%", value: $rh, range: 0...100)
-                        }
-                    }
-
-                    HStack(spacing: 10) {
-                        StepperCard(label: "Wind low", unit: "mph", value: $windLow, range: 0...60)
-                        StepperCard(label: "Wind high", unit: "mph", value: $windHigh, range: 0...60)
-                    }
-                    if windHigh > 0 {
-                        StepperCard(label: "Gust", unit: "mph", value: $gust, range: 0...80)
-                        ChipPicker(title: "Wind from", options: Wind.Direction.allCases,
-                                   selection: $direction, label: \.abbreviation)
-                    }
-
-                    Text("Note").fieldLabel()
-                    TextField("Note (optional)", text: $note, axis: .vertical)
-                        .font(PlateworksFont.body)
-                        .lineLimit(1...3)
-                        .padding(11)
-                        .background(PlateworksColor.surface, in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(PlateworksColor.hairline))
-                        .accessibilityIdentifier("edit-obs-note")
-                }
-                .padding(Metric.screenPadding)
-            }
-            .background(PlateworksColor.background)
-            .navigationTitle("Edit observation")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .accessibilityIdentifier("edit-cancel")
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        onSave(time, dryBulb, rh, wetBulb, editedWind, note)
-                        dismiss()
-                    }
-                    .fontWeight(.bold)
-                    .accessibilityIdentifier("edit-save")
-                }
-            }
-        }
-    }
-}
 
 /// Copy text to the system pasteboard — the inset "Copy" pill on the broadcast
-/// panel. Platform-guarded so the view compiles for iOS and macOS.
+/// panel, and the Copy action on the post-log script. Platform-guarded so the
+/// views compile for iOS and macOS.
 @MainActor
-private func copyToPasteboard(_ text: String) {
+func copyToPasteboard(_ text: String) {
     #if canImport(UIKit)
     UIPasteboard.general.string = text
     #elseif canImport(AppKit)

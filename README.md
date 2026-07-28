@@ -25,9 +25,10 @@ for cell.
   are step functions, a reading a step or two from a cell edge can swing PIG a
   whole fire-behavior band — so a result that sits on such an edge is flagged
   (and tappable for the full envelope) while a firm one stays silent.
-- **Humidity:** Dry-bulb + wet-bulb + elevation band → **relative humidity and
-  dew point** (NWCG psychrometric method, with Alaska thresholds). One tap sends
-  the result into the Ignition calculator.
+  Switching to wet bulb also reads out **dew point and wet-bulb depression**
+  (NWCG psychrometric method, with Alaska elevation thresholds) beside the
+  derived RH — the belt-weather-kit calculation happens where the reading is
+  entered, not on a separate screen.
 
 Temperatures are in **°F** throughout — the IRPG's native unit, and the standard
 for U.S. wildland fire.

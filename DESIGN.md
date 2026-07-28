@@ -99,24 +99,36 @@ they update live.
 
 ## 4. Screens
 
-Three tabs — **Humidity, Ignition, Obs** (left to right), launching on
-**Ignition** (`App/PlateworksIgnition/App/RootView.swift`). Each is an
-**instrument, not a form** — no "Calculate" button; results update on every
-input change. All three tabs share a single `IgnitionModel`, so the weather
-the Obs tab logs is the same weather Ignition shows. (The Obs tab is the
-Weather-Watch feature — `WatchView` / `WeatherWatchModel` internally.)
+Two tabs — **Ignition, Obs** (left to right), launching on **Ignition**
+(`App/PlateworksIgnition/App/RootView.swift`). Each is an **instrument, not a
+form** — no "Calculate" button; results update on every input change. Both tabs
+share a single `IgnitionModel`, so the weather the Obs tab logs is the same
+weather Ignition shows. (The Obs tab is the Weather-Watch feature — `WatchView`
+/ `WeatherWatchModel` internally.)
 
-> A pending workflow restructure (pinned result bar, grouped input sections,
-> unified status strip) is specified in `docs/UX_WORKFLOW.md`.
+One tab per question the operator actually asks — *how bad is it right now*,
+and *what does the record say*. That is also the volatile-vs-frozen line the
+`CLAUDE.md` guardrails draw: Ignition's estimate moves with every input, Obs
+holds readings that have been frozen and broadcast.
+
+> Two design records sit behind this section. `docs/UX_WORKFLOW.md` specified
+> the shipped Ignition restructure (pinned result bar, grouped input sections,
+> unified status strip). `docs/UX_TWO_TAB.md` specified the collapse from three
+> tabs to two — absorbing the standalone Humidity screen, moving capture into a
+> sheet, and adding the freeze receipt.
 
 ### 4.1 Ignition (PIG / FFM)
 Top-to-bottom:
 1. **Header** — "Ignition" + `IRPG p.44–49` mono reference.
 2. **Fast inputs** — Dry bulb °F plus a **Humidity source** chip row (`Direct` /
    `From wet bulb`). Direct shows a Rel. humidity % `StepperCard` (Kestrel); From
-   wet bulb swaps in a Wet bulb °F `StepperCard` and an elevation-band chip row,
-   and shows the derived RH read-only in pool teal — the value that flows into
-   the chain. Big −/+ targets (≥ 48 pt) for gloved hands.
+   wet bulb swaps in a Wet bulb °F `StepperCard`, an elevation-band chip row and
+   its **Alaska thresholds** toggle, and the derived readouts — RH read-only in
+   pool teal (the value that flows into the chain), with **dew point** and
+   **wet-bulb depression** beside it. This is the absorbed Humidity screen: the
+   belt-weather-kit calculation happens where the reading is entered. Direct
+   mode shows none of it, so the common case stays short. Big −/+ targets
+   (≥ 48 pt) for gloved hands.
 3. **Site factors** — chip rows: Month (shows resolved table B/C/D), Time of day
    (six bands + Night), Aspect, Slope, Elevation vs. weather site. These persist
    between launches; month/time pre-fill from the clock.
@@ -130,17 +142,7 @@ Top-to-bottom:
    caution; consult local experts."*
 7. **Disclaimer** — decision support only; not affiliated with NWCG.
 
-### 4.2 Humidity (RH / dew point)
-1. **Header** — "Humidity" + `NWCG PMS 437`.
-2. **Big RH readout** — 72 pt, pool teal (the brand moment).
-3. **Inputs** — Dry bulb & Wet bulb stepper cards.
-4. **Derived stats** — Dew point, Wet-bulb depression.
-5. **Elevation band** — chip row (shows station pressure in inHg) + Alaska
-   thresholds toggle.
-6. **"Use in ignition calc"** — teal button; pushes RH into the Ignition tab and
-   switches to it. Sling psychrometer → RH → PIG in one pipeline, no re-typing.
-
-### 4.3 Obs (shift observation log)
+### 4.2 Obs (shift observation log)
 1. **Header** — "Obs" + the shift's obs count (`IRPG PMS 461` before the
    first log).
 2. **Latest-reading hero** — the last logged obs: time, both `ResultCard`s,
@@ -151,17 +153,48 @@ Top-to-bottom:
    (shown once there are ≥2 observations).
 5. **Shift log** — every logged obs (time · PIG · wind · note) with per-row
    delete and an undo affordance.
-6. **Site & radio** — the sticky IMET header: addressee, location name,
-   division, site elevation, and lat/long (typed, kept offline). The first log
-   of a shift is gated on an explicit **Confirm site** review so a persisted
-   default can never silently feed a broadcast.
-7. **Pending capture card** — weather-freshness strip, obs-time steppers, the
-   shared weather inputs (bound to the same `IgnitionModel` as Ignition,
-   including wind), an optional note, and a live PIG preview.
-8. **Export shift** — IMET `.xlsx` (via the file exporter), NWS spot obs, and a
+6. **Site & radio** — the **site factors** (aspect, slope, elevation vs. weather
+   site — shared with Ignition, and what every logged obs freezes) above the
+   sticky IMET header: addressee, location name, division, site elevation, and
+   lat/long (typed, kept offline). The first log of a shift is gated on an
+   explicit **Confirm site** review, immediately below the factors it names, so
+   a persisted default can never silently feed a broadcast.
+7. **Export shift** — IMET `.xlsx` (via the file exporter), NWS spot obs, and a
    Notes table (via the share sheet).
-9. **Log bar** — fixed at the bottom; freezes the pending reading (with wind)
-   into the shift.
+8. **Log bar** — fixed at the bottom; opens the capture form (§4.3). Disabled
+   until the site is confirmed, so the gate cannot be bypassed.
+
+Entering a reading is deliberately *not* on this screen: the scroll is the
+record, and capture is a sheet. The capture controls used to sit below the whole
+record, which put the app's most repeated action behind everything else.
+
+### 4.3 The observation form (`ObsFormSheet`)
+
+One sheet, two modes — capture and edit — so the two paths cannot drift into
+different layouts. Top to bottom in capture mode:
+
+1. **Pending PIG** — what the reading currently comes to, live.
+2. **Weather-freshness strip**, then the **obs time** (typed or nudged ±5 m,
+   tracking the clock until taken over), then a future-time caution if the time
+   is ahead of the clock.
+3. **Shared weather inputs** — the same `IgnitionModel` the Ignition tab shows.
+   Capture writes through: this *is* the live reading.
+4. **Note**, optional.
+5. **Freeze receipt** — one line naming everything the commit will store:
+   temperature, RH and its source, wind, month, the obs time **and the IRPG band
+   it resolves to**, aspect, slope, elevation delta. Built from the same
+   `pendingObs` the commit stores, so it cannot describe a different reading.
+6. **Log Observation** — the commit, immediately under the receipt.
+
+The form scrolls as one piece, commit included, rather than pinning the button:
+a reading cannot be frozen without passing the summary of what will be frozen.
+
+**Edit mode** keeps isolated state — correcting a record never moves the live
+tab — and commits with **Save**.
+
+On commit, the sheet becomes the **frozen broadcast script**, full-width and
+high-contrast for reading over the net, with Copy and Done. It presents the
+already-frozen text; it recomputes nothing.
 
 ---
 
@@ -170,6 +203,16 @@ Top-to-bottom:
 - `StatCard` — read-only derived value.
 - `ChipPicker` — horizontal single-select chips; selected = teal ring + tint.
 - `ResultCard` — severity stripe + big PIG readout + FFM sub-line.
+- `SectionHeader` — uppercase mono title, table-reference annotation, optional
+  `SHARED · <tab>` cue for controls bound to the other tab's model.
+- `StatusStrip` — always-present annunciator row; `Muted` nominal, `SignalAmber`
+  caution, optional trailing action. Never carries a severity-ramp color.
+- `PIGSummaryBar` — the pinned Ignition readout: both PIG values, the unshaded
+  behavior word, severity underbars.
+- `WeatherInputGroup` — the shared weather controls (both tabs render these
+  exact controls bound to one `IgnitionModel`), including the wet-bulb
+  psychrometrics.
+- `ObsFormSheet` — the observation form, capture and edit (§4.3).
 
 ---
 
@@ -190,11 +233,16 @@ Top-to-bottom:
 2. **Severity ramp tuning** on real OLED and in sunlight.
 3. **Motion** — subtle: a value tick on change, a severity-color cross-fade.
    Keep it minimal; respect Reduce Motion.
-4. **"Book mode" (v2 candidate)** — render the actual IRPG table with the
-   selected cells highlighted; the app *becomes* the pocket-guide page.
+4. **"Book mode" — the Ignition tab's next feature.** Render the actual IRPG
+   table with the resolved cell highlighted; the app *becomes* the pocket-guide
+   page. Promoted from v2 candidate by `docs/UX_TWO_TAB.md` §10: on a two-tab
+   app Ignition's whole job is trustworthy estimation, this is the chain
+   strip's show-your-work made spatial, and it makes the cell-edge sensitivity
+   marker self-evident because the neighbouring cell is right there. Needs its
+   own spec (pagination, cell-highlight accessibility, landscape).
 5. **Apple Watch app / widget (v2)** — glanceable PIG on the wrist or home
    screen during a weather obs. (Distinct from the shipped **Obs tab**,
-   §4.3, which is the phone's shift observation log.)
+   §4.2, which is the phone's shift observation log.)
 
 ---
 

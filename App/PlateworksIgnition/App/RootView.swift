@@ -1,22 +1,29 @@
 import SwiftUI
 
-/// Three-tab shell: Humidity (RH / dew point), Ignition (PIG / FFM), and Obs
-/// (the shift observation log — the Weather-Watch feature, ``WatchView`` /
-/// ``WeatherWatchModel`` internally). The Humidity screen can push its result
-/// into Ignition and switch tabs.
+/// Two-tab shell: **Ignition** (the live PIG / FFM estimate, including the
+/// wet-bulb psychrometrics that used to occupy a third tab) and **Obs** (the
+/// shift observation log — the Weather-Watch feature, ``WatchView`` /
+/// ``WeatherWatchModel`` internally).
 ///
-/// All three tabs share a single ``IgnitionModel`` so the weather the Obs tab
-/// freezes is the same weather the operator sees on Ignition — constructed here in
+/// One tab per question the operator actually asks: *how bad is it right now*
+/// and *what does the record say*. That split is also the volatile-vs-frozen
+/// line — Ignition's estimate changes with every input, Obs holds readings that
+/// have been frozen and broadcast.
+///
+/// Both tabs share a single ``IgnitionModel`` so the weather the Obs tab freezes
+/// is the same weather the operator sees on Ignition — constructed here in
 /// `init` because one `@State` can't be initialized from another inline.
 @MainActor
 struct RootView: View {
     @State private var ignition: IgnitionModel
-    @State private var humidity: HumidityModel
     @State private var watch: WeatherWatchModel
     @State private var selection: Tab = .ignition
+    /// Raised when a deep link wants the Obs tab to open its capture form; the
+    /// tab consumes and clears it.
+    @State private var startCapture = false
     @Environment(\.scenePhase) private var scenePhase
 
-    enum Tab: Hashable { case ignition, humidity, watch }
+    enum Tab: Hashable { case ignition, watch }
 
     /// - Parameter store: where the models persist. Defaults to
     ///   ``AppEnvironment/defaultsStore``, which is `.standard` in normal use and
@@ -26,21 +33,11 @@ struct RootView: View {
     init(store: UserDefaults = AppEnvironment.defaultsStore) {
         let ignition = IgnitionModel(store: store)
         _ignition = State(initialValue: ignition)
-        _humidity = State(initialValue: HumidityModel(store: store))
         _watch = State(initialValue: WeatherWatchModel(ignition: ignition, store: store))
     }
 
     var body: some View {
         TabView(selection: $selection) {
-            NavigationStack {
-                HumidityView(model: humidity) { rh in
-                    ignition.applyHumidity(rh)
-                    selection = .ignition
-                }
-            }
-            .tabItem { Label("Humidity", systemImage: "humidity") }
-            .tag(Tab.humidity)
-
             NavigationStack {
                 IgnitionView(model: ignition)
             }
@@ -48,7 +45,7 @@ struct RootView: View {
             .tag(Tab.ignition)
 
             NavigationStack {
-                WatchView(model: watch, ignition: ignition)
+                WatchView(model: watch, ignition: ignition, startCapture: $startCapture)
             }
             .tabItem { Label("Obs", systemImage: "binoculars") }
             .tag(Tab.watch)
@@ -66,7 +63,12 @@ struct RootView: View {
         guard let link = AppEnvironment.pendingDeepLink else { return }
         AppEnvironment.pendingDeepLink = nil
         switch link {
-        case .logObservation: selection = .watch
+        case .logObservation:
+            selection = .watch
+            // The intent is "log an observation", not "show me the log", so it
+            // opens the capture form too. WatchView clears the flag and honours
+            // the site gate.
+            startCapture = true
         }
     }
 }

@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | Proposed — awaiting sign-off; implementation follows the PR slicing in §12. |
+| **Status** | Proposed — awaiting sign-off; implementation follows the PR slicing in §12, task-planned in `PLAN_TWO_TAB.md`. |
 | **Scope** | Collapse the three-tab shell to two tabs (Ignition · Obs); absorb the Humidity screen into Ignition's weather group; restructure the Obs hourly loop around a capture sheet, a freeze receipt, and a post-log broadcast screen; expose the site factors on Obs; promote Book mode from v2 candidate to the Ignition tab's marquee follow-on. |
 | **Non-goals** | No calculation changes — `Sources/PlateworksCore/` and `web/engine.js` are untouched, and no conformance vectors regenerate. No widget, watch-app, or Live Activity changes (they follow the record, which doesn't change shape). No visual-brand changes — colors, type, and component styling stay as specified in `DESIGN.md`. |
-| **Companions** | `DESIGN.md` (visual system) · `docs/UX_WORKFLOW.md` (the shipped Ignition restructure this builds on) · `docs/PLAN_WIDGET_AND_WATCH.md` (the volatile-vs-frozen design line) |
+| **Companions** | `docs/PLAN_TWO_TAB.md` (the task-level implementation plan for this spec) · `DESIGN.md` (visual system) · `docs/UX_WORKFLOW.md` (the shipped Ignition restructure this builds on) · `docs/PLAN_WIDGET_AND_WATCH.md` (the volatile-vs-frozen design line) |
 
 Every decision below is grounded in the shipped code, cited as `file:line`
 against the tree at the time of writing. Wireframes are drawn at iPhone SE
@@ -427,6 +427,10 @@ reason to exist.
 ---
 
 ## 12. Implementation appendix
+
+The slicing below is expanded to task level — with per-PR verification,
+sizes, risks, and the cloud-vs-Mac split — in
+[`PLAN_TWO_TAB.md`](PLAN_TWO_TAB.md).
 
 **Order:** native first, web twin second (`docs/PARITY.md`). No
 `PlateworksCore` change ⇒ no vector regeneration; `node

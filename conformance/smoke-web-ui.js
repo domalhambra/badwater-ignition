@@ -56,7 +56,18 @@ const server = http.createServer((req, res) => {
   const page = await browser.newPage({ viewport: { width: 420, height: 900 } });
   const errors = [];
   page.on("pageerror", e => errors.push(String(e)));
-  page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
+  page.on("console", m => {
+    if (m.type() !== "error") return;
+    // A failed load of an external resource — in practice the deliberate
+    // Plausible analytics script — is not an app error: the app is
+    // offline-first and must work without the network, and counting it made
+    // this test report FAILURE on exactly the offline condition the app
+    // exists to serve. Only external-origin load failures are exempt; any
+    // error from our own origin (or from page JS) still fails the run.
+    const src = (m.location() || {}).url || "";
+    if (/Failed to load resource/.test(m.text()) && src && !src.includes("127.0.0.1")) return;
+    errors.push(m.text());
+  });
   await page.addInitScript(() => localStorage.clear());
   await page.goto(base, { waitUntil: "networkidle" });
   const settle = () => page.waitForTimeout(150);

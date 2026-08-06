@@ -126,8 +126,10 @@ what makes this possible.
 1. Scheme: **PlateworksIgnition**. Destination: **iPhone 17 Pro**.
 2. Press **▶**.
 
-Verified working on 2026-07-27: the app launches to the Ignition tab with the
-Humidity · Ignition · Obs bar.
+Verified working on 2026-07-27: the app launches to the Ignition tab. (The tab
+bar verified that day was Humidity · Ignition · Obs; the two-tab restructure —
+PR #33, merged 2026-07-28 — collapsed it to **Ignition · Obs**, with the wet-bulb
+humidity readouts inside Ignition's weather group.)
 
 ### A2. Add the widget to the home screen
 

@@ -36,9 +36,9 @@ export disclaimer string — see the rename notes in `docs/PARITY.md`.
 ## Location & filing
 
 - **Repo folder:** `Projects/Badwater OS/Badwater Ignition/`
-- **GitHub:** `domalhambra/badwater-ignition`
-- **Netlify site:** `badwater-ignition` → `badwater-ignition.netlify.app`
-- **DNS:** Cloudflare, `badwater.guide` zone — proxied CNAME `ignition` (+ `obs` alias for the 301)
+- **GitHub:** `domalhambra/plateworks-ignition` (renamed from `badwater-ignition`, 2026-07-28)
+- **Netlify site:** `plateworks-ignition` → `plateworks-ignition.netlify.app` (the old `badwater-ignition` site is deleted)
+- **DNS:** Cloudflare, `plateworks.org` zone — proxied CNAMEs `ignition` (canonical) + `obs` (301 alias). Legacy `badwater.guide` hosts 301 via a redirect rule in the `badwater.guide` zone; their DNS points at a proxied dummy.
 - **Workspace filing:** listed in `Badwater OS/CLAUDE.md` Projects table + Fallback route (fire-tool / IRPG questions).
 - **JD context:** subject-matter home is *20-29 Work Projects* (federal wildland fire), but as a full-repo project it lives under `Badwater OS/` alongside PKM / HD / Garden.
 
@@ -80,6 +80,7 @@ Swift / SwiftUI · XcodeGen · vanilla-JS PWA (no build step, no deps) · Netlif
 - [x] **Web PWA live** at `ignition.badwater.guide` — 2026-07-18
 - [x] Brand unified to "Badwater Ignition" across native + web — 2026-07-18
 - [x] Code renamed to **Plateworks Ignition** (bundle IDs, App Groups, Swift modules) — 2026-07-27
+- [x] Hosting + repo migrated: `ignition.plateworks.org` canonical, GitHub renamed to `plateworks-ignition`, legacy hosts 301 — 2026-07-28
 - [ ] Finalize `DESIGN.md` design system pass
 - [ ] Native app → **TestFlight beta** (first external testers)
 - [ ] Finalize `docs/APP_STORE.md` listing + assets (screenshots, privacy)

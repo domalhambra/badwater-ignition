@@ -93,6 +93,16 @@ final class NotesExportTests: XCTestCase {
         XCTAssertFalse(bare.contains("\tNote"))
     }
 
+    /// A pasted CRLF (or bare-CR) note must flatten like `\n` does: a live CR in
+    /// the cell renders as a line break in Notes and tears the tab row — and
+    /// `.whitespaces` didn't even trim a trailing one.
+    func testCarriageReturnsFlattenLikeNewlines() {
+        XCTAssertEqual(NotesExport.sanitizedNote("sun\r\non thermometer"), "sun on thermometer")
+        XCTAssertEqual(NotesExport.sanitizedNote("suspect\rreading"), "suspect reading")
+        XCTAssertEqual(NotesExport.sanitizedNote("trailing\r"), "trailing")
+        XCTAssertNil(NotesExport.sanitizedNote("\r\n \r"))
+    }
+
     // MARK: - Midnight divider
 
     func testMidnightDivider() {

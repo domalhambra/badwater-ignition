@@ -20,6 +20,10 @@ public enum ZipArchive {
         public static let maxEntryNameBytes = Int(UInt16.max)
         public static let maxEntryBytes = Int(UInt32.max)
         public static let maxEntryCount = Int(UInt16.max)
+        /// The whole archive, not just each entry: central-directory offsets are
+        /// 32-bit too, so two individually-legal entries can still push the
+        /// later offsets past what the format can encode.
+        public static let maxArchiveBytes = Int(UInt32.max)
     }
 
     /// Why a ZIP could not be written.
@@ -27,6 +31,7 @@ public enum ZipArchive {
         case entryNameTooLong(path: String, bytes: Int)
         case entryTooLarge(path: String, bytes: Int)
         case tooManyEntries(count: Int)
+        case archiveTooLarge(bytes: Int)
     }
 
     /// Package entries (path → bytes) into a ZIP container.
@@ -58,6 +63,22 @@ public enum ZipArchive {
             guard entry.data.count <= Limit.maxEntryBytes else {
                 throw Failure.entryTooLarge(path: entry.path, bytes: entry.data.count)
             }
+        }
+        // Per-entry checks alone don't deliver the no-trap contract: `build`
+        // converts each running offset to UInt32, and entries that pass
+        // individually can sum past 4 GiB. Sum the exact layout up front —
+        // per entry a 30-byte local header + name + data, a 46-byte central
+        // header + name, then the 22-byte end record. (Int is 64-bit on every
+        // supported platform, so this sum itself cannot overflow within the
+        // per-entry and count limits above.)
+        var total = 22
+        for entry in entries {
+            let nameBytes = entry.path.utf8.count
+            total += 30 + nameBytes + entry.data.count
+            total += 46 + nameBytes
+        }
+        guard total <= Limit.maxArchiveBytes else {
+            throw Failure.archiveTooLarge(bytes: total)
         }
         return build(entries)
     }

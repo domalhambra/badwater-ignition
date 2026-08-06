@@ -46,6 +46,14 @@ public enum Psychrometrics {
     ///   - wetBulbF: wet-bulb temperature, °F (clamped to ≤ dry-bulb).
     ///   - band: elevation band supplying the station pressure.
     public static func compute(dryBulbF: Double, wetBulbF: Double, band: ElevationBand) -> HumidityResult {
+        // A non-finite temperature is not a reading. Without this it would trap
+        // anyway — but incidentally, at the Int conversions below, after NaN had
+        // already slipped through the min/max clamps (which don't propagate NaN)
+        // into a plausible-looking RH of 100. Fail loudly and by name instead.
+        // Neither shipping surface can reach this: the app calls the Int
+        // overloads and the web twin's inputs are integer steppers.
+        precondition(dryBulbF.isFinite && wetBulbF.isFinite,
+                     "Psychrometrics.compute requires finite temperatures")
         let wet = min(wetBulbF, dryBulbF)   // wet bulb cannot exceed dry bulb
         let tDryC = fahrenheitToCelsius(dryBulbF)
         let tWetC = fahrenheitToCelsius(wet)

@@ -103,7 +103,13 @@ public enum SiteElevation {
         guard let accuracy = sensorAccuracyFeet, accuracy.isFinite, accuracy > 0 else {
             return roundingUncertaintyFeet
         }
-        return max(roundingUncertaintyFeet, Int(accuracy.rounded(.up)))
+        // Cap before converting — same trap `rounded(feetMSL:)` guards: a sensor
+        // claiming an absurd accuracy must degrade, not crash. 100,000 ft already
+        // straddles every band from every plausible elevation, so nothing above
+        // it carries more meaning (and, unlike `Int.max`, it can't overflow the
+        // ± arithmetic in `straddlesBandBoundary`).
+        let cappedFeet = min(accuracy.rounded(.up), 100_000)
+        return max(roundingUncertaintyFeet, Int(cappedFeet))
     }
 
     /// Whether an elevation's uncertainty interval spans two ``ElevationBand``s —

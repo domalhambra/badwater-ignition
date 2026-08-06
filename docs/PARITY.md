@@ -2,7 +2,7 @@
 
 Plateworks Ignition ships twice: the SwiftUI app (iOS/macOS, built on
 `Sources/PlateworksCore`) and the hand-written vanilla-JS PWA in `web/`
-(ignition.badwater.guide). Two implementations of one safety-relevant spec is a
+(ignition.plateworks.org). Two implementations of one safety-relevant spec is a
 standing invitation to drift — a wrong PIG on one platform is exactly the bug
 this repo exists to prevent. This document describes the machinery that makes
 parity **enforced by the build and automated by an agent**, not maintained by
@@ -142,6 +142,10 @@ workflow still helps by pushing the port commit onto your PR branch on demand
 | Radio overrides | `forceLocation` / `suppressLocation` operator toggles | no UI affordance | Vectors pin the common path; add with the UI when ported. |
 | Month-group caption | "Feb–Mar–Apr & Aug–Sep–Oct" | "Feb Mar Apr Oct" (drops Aug–Sep) | Display copy only; fix with any app.js touch. |
 | Obs timestamps | real `Date`s; a shift can span local midnight (multi-sheet export) | minutes-of-day + per-shift date | Web model is day-scoped by design; xlsx vectors use one-day shifts. |
+| Logged month | `pendingObs` derives month from the wall clock at log time | `monthForLog()` reads the shift's own date (`shiftDateMs`) | Consequence of the day-scoped model: a shift carried across a month boundary logs the shift's month. Aligns when timestamps do. |
+| IMET wet-bulb column | column C written from the obs's frozen `HumidityResult` | header present, column never written — web obs don't retain the wet bulb | Same root cause as the Notes-export row; vectors carry no wet-bulb obs, so the harness can't see it. Align when web obs retain humidity. |
+| "Recorded calm" wind | `nil` (not recorded) vs `.lightVariable` (recorded calm) are distinct — cell omitted vs "Light/Variable" | one shape: `high<=0 && gust<=0` reads as not recorded | A deliberate calm reading can't appear in a web broadcast/export. Align with the wind-model port. |
+| Sheet-name truncation | `prefix(31)` counts grapheme clusters; empty-book fallback uses the **earliest** shift | `slice(0,31)` counts UTF-16 units (can split a surrogate pair); fallback uses the **last** entry | Divergent only for non-BMP division names near 31 chars or multi-empty-shift books — both unreachable from the UIs; vectors are ASCII, one-shift. Fix web-side with any engine touch. |
 | GPS site autofill | `SiteElevation` (round to 100 ft, band-straddle check) + `GeoPoint.isValid`, driven by CoreLocation in `SiteLocationProvider` | site elevation and lat/long typed only; no Geolocation API use | **Deliberately not ported yet.** These are device-sensor normalization rules, not IRPG calculation — nothing in `engine.js` calls them, so porting now would add dead code to the shipped PWA and force every field device to refetch its cache for no user benefit. Port them together with web Geolocation autofill, in the same change. Not in `vectors.json`, so parity CI stays green and honest meanwhile. |
 
 ## The structural endgame (if wanted later)

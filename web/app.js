@@ -1,7 +1,7 @@
 "use strict";
-//====================== Badwater Ignition — UI layer ======================
+//====================== Plateworks Ignition — UI layer ======================
 // State, rendering, and event wiring. All calculation lives in engine.js (the
-// web twin of BadwaterCore, conformance-tested against the Swift core in CI);
+// web twin of PlateworksCore, conformance-tested against the Swift core in CI);
 // classic scripts share the global lexical scope, so everything engine.js
 // declares is directly visible here.
 
@@ -62,10 +62,25 @@ let obsSeq=1;
 // NOT brand copy — do not rename to "plateworks.*". This key holds every saved
 // observation; changing it orphans a firefighter's logged data on next open.
 const LS_KEY="badwater.obs.v1";
-function saveState(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({S:S,obsSeq:obsSeq})); }catch(e){} }
+// Latched on the first failed write and never reset — the twin of the native
+// app's `persistenceFailed`. The in-memory log is intact and exportable; what
+// must not happen is the record quietly failing to survive a reload with
+// nothing on screen saying so.
+let persistenceFailed=false;
+function saveState(){ try{ localStorage.setItem(LS_KEY, JSON.stringify({S:S,obsSeq:obsSeq})); }catch(e){
+  if(!persistenceFailed){ persistenceFailed=true; try{ toast("Couldn't save on this device — export before you close the app"); }catch(_){} }
+} }
 function loadState(){ try{
   const raw=localStorage.getItem(LS_KEY); if(!raw)return;
   const d=JSON.parse(raw);
+  // A parseable blob with a mangled shape (schema bug, hand edit, a future
+  // version writing through an old cached app) used to crash render() at
+  // startup and leave the screen permanently blank. Refuse the restore but
+  // keep the bytes under a side key, so nothing is silently destroyed.
+  if(d&&d.S&&(("obs" in d.S&&!Array.isArray(d.S.obs))||("history" in d.S&&!Array.isArray(d.S.history)))){
+    try{ localStorage.setItem(LS_KEY+".corrupt", raw); }catch(_){}
+    return;
+  }
   if(d&&d.S){ Object.assign(S,d.S); S.editing=null; S.edit=null;
     // Never restore an open sheet: it would reopen over the record on launch,
     // and a half-entered capture is not a reading anyone should inherit.
@@ -80,6 +95,21 @@ function loadState(){ try{
 }catch(e){} }
 loadState();
 if(!S.shiftDateMs)S.shiftDateMs=now.getTime();
+
+// Re-derive month + time band from the wall clock unless the operator has
+// overridden them — the twin of IgnitionModel.refreshClock(). Without this, a
+// restored session (or a tab left open across a band boundary) kept computing
+// the LIVE estimate from a stale band and month while the status strip claimed
+// "Tracking clock". Logged obs were never affected (they derive their own band
+// from the obs time); this is about the headline live surface.
+function refreshClock(){
+  if(S.clockOverridden)return false;
+  const d=new Date();
+  const m=d.getMonth()+1, tb=timeBandFromClock(d.getHours(),d.getMinutes());
+  if(m===S.month&&tb===S.timeBand)return false;
+  S.month=m; S.timeBand=tb; return true;
+}
+refreshClock();
 
 // ---- retained shift history (each shift = one day; the crew starts a new one
 // daily). A shift snapshot is {obs, division, locationName, dateMs}. ----
@@ -236,9 +266,17 @@ function obsDueHtml(){
   const last=S.obs.length?Math.max(...S.obs.map(o=>o.min)):null;
   let icon,msg,caution;
   if(last==null){ icon="◷"; caution=false; msg="First obs of the shift — take one now"; }
-  else { const due=last+cadence, mins=due-now;
-    if(mins<=5){ caution=true; icon="⏰"; msg=mins>=0?`Obs due now · ${clockLabel(due%1440)}`:`Obs overdue ${-mins} min · was due ${clockLabel(due%1440)}`; }
-    else { caution=false; icon="◷"; msg=`Next obs ${clockLabel(due%1440)} · in ${mins} min`; } }
+  else {
+    const due=(last+cadence)%1440;
+    // Minutes-of-day wrap at midnight: a 23:50 obs is due at 00:50, and the
+    // plain difference read that as "in 1460 min" for a night shift — the
+    // overdue branch was unreachable until the next evening. Take the circular
+    // distance and read the shorter way around: within 12h ahead it's a
+    // countdown, otherwise it's overdue.
+    let mins=(due-now+1440)%1440;
+    if(mins>720)mins-=1440;
+    if(mins<=5){ caution=true; icon="⏰"; msg=mins>=0?`Obs due now · ${clockLabel(due)}`:`Obs overdue ${-mins} min · was due ${clockLabel(due)}`; }
+    else { caution=false; icon="◷"; msg=`Next obs ${clockLabel(due)} · in ${mins} min`; } }
   return `<div class="strip ${caution?'caution':''}"><span>${icon}</span><span>${msg}</span></div>`;
 }
 // Trend overlay — one line per retained day (history + current) on a shared
@@ -305,10 +343,13 @@ function renderWatch(){
     heroHtml=`<div class="empty"><div class="t">No observations yet</div><div class="lbl">Confirm the site, set the reading, then Log Observation</div></div>`;
   }
 
+  // The undo strip lives OUTSIDE the shift-log group: deleting the only obs of
+  // the shift used to remove the log section and the undo affordance with it —
+  // exactly when the deletion is most likely to be the mis-tap.
+  const undoHtml=S.undo&&S.lastRemoved?`<div class="strip caution"><span>↺</span><span>Observation removed</span><button data-action="undo">Undo</button></div>`:"";
   let logHtml="";
   if(obs.length){
     logHtml=`<div class="group"><div class="sect"><span class="st">Shift log · ${obs.length} obs</span></div>
-      ${S.undo&&S.lastRemoved?`<div class="strip caution"><span>↺</span><span>Observation removed</span><button data-action="undo">Undo</button></div>`:""}
       ${obs.map(o=>`<div class="logrow"><span class="lt">${hhmm(o.min)}</span>
         <div><div class="lp">PIG ${o.pigU}/${o.pigS}</div><div class="lw">${esc(windSpot(o.wind))}${o.note?" · "+esc(o.note):""}</div></div>
         <button class="edt" data-action="editObs" data-id="${o.id}">✎</button>
@@ -360,10 +401,11 @@ function renderWatch(){
   }
   const newShiftHtml = obs.length?`<div class="group"><button class="btn ghost" data-action="newShift">Start new shift</button></div>`:"";
 
+  const persistHtml=persistenceFailed?`<div class="strip caution"><span>⚠</span><span>Couldn't save the log on this device — export the spreadsheet before you close the app.</span></div>`:"";
   const body=`<div class="pad">
     <div class="titlerow"><span class="title">Obs</span><span class="lbl">${obs.length?obs.length+" obs this shift":"IRPG PMS 461"}</span></div>
-    ${obsDueHtml()}
-    ${heroHtml}${broadcastHtml}${trendSectionHtml()}${logHtml}${siteFactorsHtml}${siteHtml}${exportHtml}${historyHtml}${newShiftHtml}
+    ${persistHtml}${obsDueHtml()}
+    ${undoHtml}${heroHtml}${broadcastHtml}${trendSectionHtml()}${logHtml}${siteFactorsHtml}${siteHtml}${exportHtml}${historyHtml}${newShiftHtml}
     <div class="disc">PIG is app-computed — not observed, not a forecast.</div>
   </div>`;
   const logbar=`<div class="logbar"><button class="btn primary" data-action="openCapture" ${gated?"disabled":""}>${gated?"Confirm site to log":"Log Observation"}</button></div>`;
@@ -438,7 +480,10 @@ function spotText(){
 function notesText(){
   const rows=S.obs.slice().sort((a,b)=>a.min-b.min);
   const head="Time\tTemp\tRH\tWind\tPIG(u/s)\tNote";
-  const body=rows.map(o=>`${hhmm(o.min)}\t${o.temp}\t${o.rh}\t${windSpot(o.wind)}\t${o.pigU}/${o.pigS}\t${o.note||""}`).join("\n");
+  // Flatten tabs/newlines out of the note — either tears the tab grid apart —
+  // mirroring the native NotesExport.sanitizedNote.
+  const flat=s=>(s||"").replace(/[\t\r\n]+/g," ").trim();
+  const body=rows.map(o=>`${hhmm(o.min)}\t${o.temp}\t${o.rh}\t${windSpot(o.wind)}\t${o.pigU}/${o.pigS}\t${flat(o.note)}`).join("\n");
   return head+"\n"+body;
 }
 
@@ -452,7 +497,7 @@ function downloadXlsx(){
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1500);
     toast("Downloaded PlateworksIgnition-observations.xlsx");
-  }catch(e){ toast("Download blocked in this frame — open the artifact full-page"); }
+  }catch(e){ toast("Spreadsheet export failed — copy the Notes table instead"); }
 }
 
 //====================== Actions ======================
@@ -559,8 +604,10 @@ document.addEventListener("click",ev=>{
   else if(a==="copy"){ const k=b.dataset.kind; const latest=S.obs.slice().sort((x,y)=>y.min-x.min)[0];
     copyText(k==="broadcast"?(latest?latest.broadcast:""):k==="spot"?spotText():notesText()); }
 });
-// parse "HH:MM" / "HHMM" / "H" -> minutes-of-day, or null while half-typed
-function parseHM(s){ const c=(s||"").replace(/[^0-9:]/g,""); let h,m;
+// parse "HH:MM" / "HHMM" / "H" -> minutes-of-day, or null while half-typed.
+// A digitless string (a bare ":") must not parse: parseInt(""||"0") read it as
+// midnight and silently re-timed the pending obs — same fix as the native app.
+function parseHM(s){ const c=(s||"").replace(/[^0-9:]/g,""); if(!/[0-9]/.test(c))return null; let h,m;
   if(c.includes(":")){ const p=c.split(":"); h=parseInt(p[0]||"0",10); m=parseInt(p[1]||"0",10); }
   else { const d=c.replace(/[^0-9]/g,""); if(!d)return null; if(d.length<=2){h=parseInt(d,10);m=0;} else {h=parseInt(d.slice(0,-2),10);m=parseInt(d.slice(-2),10);} }
   if(isNaN(h)||isNaN(m)||h<0||h>23||m<0||m>59)return null; return h*60+m; }
@@ -570,17 +617,30 @@ document.addEventListener("input",ev=>{
   if(f==="obsTime"){ const p=parseHM(el.value); if(p!=null)S.pendingMin=p; return; }
   if(f==="editTime"){ if(S.edit){ const p=parseHM(el.value); if(p!=null)S.edit.min=p; } return; }
   if(f==="editNote"){ if(S.edit)S.edit.note=el.value; return; }
-  if(f==="siteElevationFeet"){ const n=parseInt(el.value,10); S.siteElevationFeet=Number.isFinite(n)?n:null; return; }
+  // Strip digit grouping first: "4,150" parsed as 4 — and was then spoken over
+  // the radio and exported as a 4-foot site elevation.
+  if(f==="siteElevationFeet"){ const n=parseInt(el.value.replace(/[,\s]/g,""),10); S.siteElevationFeet=Number.isFinite(n)?n:null; return; }
   S[f]=el.value;
 });
 // commit the typed obs time (refresh the live PIG preview) on blur/enter
 document.addEventListener("change",ev=>{ if(ev.target.dataset&&ev.target.dataset.field==="obsTime")render(); });
 document.getElementById("clock").textContent=clockLabel(now.getHours()*60+now.getMinutes());
-// Capture typed-but-not-yet-rendered edits when the app is backgrounded/closed.
+// Capture typed-but-not-yet-rendered edits when the app is backgrounded/closed —
+// and snap month/band back to the wall clock when the app comes forward, the
+// same moment the native app calls refreshClock() on scenePhase.
 window.addEventListener("pagehide", saveState);
-document.addEventListener("visibilitychange", function(){ if(document.visibilityState==="hidden") saveState(); });
-// live "next obs due" countdown — re-render the Obs tab every 30s unless typing
-// (skipped while a form is open — a re-render mid-entry would rebuild the sheet
-// under the operator's hands)
-setInterval(()=>{ if(S.tab==="watch" && !S.sheet && !(document.activeElement&&["INPUT","TEXTAREA"].includes(document.activeElement.tagName))) render(); },30000);
+document.addEventListener("visibilitychange", function(){
+  if(document.visibilityState==="hidden"){ saveState(); }
+  else if(refreshClock()){ render(); }
+});
+// live clock + "next obs due" countdown. The status-bar clock always ticks;
+// month/band re-derive unless overridden; re-renders skip while a form is open
+// or the operator is typing — a rebuild mid-entry would pull the sheet out from
+// under their hands (state still updates; the next quiet tick paints it).
+setInterval(()=>{
+  document.getElementById("clock").textContent=clockLabel(nowMin());
+  const moved=refreshClock();
+  const typing=document.activeElement&&["INPUT","TEXTAREA"].includes(document.activeElement.tagName);
+  if((moved||S.tab==="watch") && !S.sheet && !typing) render();
+},30000);
 render();

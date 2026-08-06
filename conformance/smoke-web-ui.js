@@ -131,6 +131,30 @@ const server = http.createServer((req, res) => {
   check("logged obs becomes the hero", !!(await page.$(".hero")));
   check("shift log has the entry", !!(await page.$(".logrow")));
 
+  console.log("\n[clock tracking — the twin of IgnitionModel.refreshClock]");
+  const clk = await page.evaluate(() => {
+    const d = new Date();
+    const wantM = d.getMonth() + 1;
+    const wantTb = timeBandFromClock(d.getHours(), d.getMinutes());
+    // A restored-but-not-overridden month/band must snap back to the clock —
+    // the regression here was a session restored days later still computing
+    // the live PIG from the stale band while claiming "Tracking clock".
+    S.clockOverridden = false; S.month = wantM === 1 ? 2 : 1; S.timeBand = wantTb === 0 ? 1 : 0;
+    const moved = refreshClock();
+    const rederived = { m: S.month, tb: String(S.timeBand) };
+    // A manual override must still stand.
+    S.clockOverridden = true; S.month = wantM === 1 ? 2 : 1;
+    const heldMonth = S.month;
+    const movedWhileOverridden = refreshClock();
+    const held = !movedWhileOverridden && S.month === heldMonth;
+    S.clockOverridden = false; refreshClock();   // restore for later checks
+    return { moved, rederived, wantM, wantTb: String(wantTb), held };
+  });
+  check("stale non-overridden month/band re-derives from the clock",
+    clk.moved && clk.rederived.m === clk.wantM && clk.rederived.tb === clk.wantTb,
+    JSON.stringify(clk));
+  check("a manual override still stands against the tick", clk.held);
+
   console.log("\n[month-freeze parity with WeatherWatchModel.pendingObs]");
   const m = await page.evaluate(() => {
     const shiftMonth = new Date(S.shiftDateMs).getMonth() + 1;

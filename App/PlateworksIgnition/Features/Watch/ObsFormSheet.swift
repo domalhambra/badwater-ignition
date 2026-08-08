@@ -519,6 +519,10 @@ struct ObsTimeField: View {
 /// alone).
 func parseHourMinute(_ s: String) -> (Int, Int)? {
     let cleaned = s.filter { $0.isNumber || $0 == ":" }
+    // A bare ":" (or any digitless string) must not parse: Int("") ?? 0 would
+    // read it as 00:00 and silently re-time the observation to midnight — a
+    // past time, so the future-time strip would never flag it.
+    guard cleaned.contains(where: \.isNumber) else { return nil }
     var h = 0, m = 0
     if cleaned.contains(":") {
         let parts = cleaned.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)

@@ -88,12 +88,18 @@ public enum NotesExport {
 
     /// A note flattened for the tab grid: tabs/newlines become spaces (either
     /// would tear the row apart), whitespace-only collapses to nil.
+    ///
+    /// `\r` counts as a newline here: a pasted CRLF note used to keep its CR —
+    /// which renders as a line break in Notes and tears the row — because only
+    /// `\t` and `\n` were flattened and `.whitespaces` doesn't trim `\r` either.
     static func sanitizedNote(_ note: String?) -> String? {
         guard let note else { return nil }
         let flat = note
+            .replacingOccurrences(of: "\r\n", with: " ")
             .replacingOccurrences(of: "\t", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return flat.isEmpty ? nil : flat
     }
 

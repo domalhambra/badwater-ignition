@@ -46,14 +46,18 @@ Tests/PlateworksCoreTests/          golden cells, banding boundaries, property t
 
 App/PlateworksIgnition/             SwiftUI app (iOS + macOS)
   DesignSystem/                   Plateworks color/type tokens + components (VoiceOver-ready)
-  Features/Ignition, Features/Humidity
-  Assets.xcassets/Colors          light/dark palette (generated)
+  Features/Ignition, Features/Watch (the Obs tab), Features/Shared
+  Intents/                        Siri / Shortcuts entry points
   PrivacyInfo.xcprivacy           privacy manifest (no data collected)
+App/Shared/                         palette (generated colorsets) + types compiled into app AND extensions
+App/PlateworksWidget/               home/lock-screen widget + Live Activity (reads the frozen record)
+App/PlateworksWatch/, App/PlateworksWatchWidget/, App/WatchShared/
+                                  watchOS mirror app + complication (WatchConnectivity, read-only)
 App/PlateworksIgnitionTests/        view-model unit tests (run in Xcode)
 App/PlateworksIgnitionUITests/      black-box UI smoke tests (run in Xcode)
-project.yml                       XcodeGen spec (app + test targets, test scheme)
+project.yml                       XcodeGen spec (all five targets + test schemes)
 
-web/                              PWA port (ignition.badwater.guide) — engine.js (logic twin
+web/                              PWA port (ignition.plateworks.org) — engine.js (logic twin
                                   of PlateworksCore) + app.js (UI twin of App/); static, offline-first
 Sources/PlateworksVectors/          `swift run plateworks-vectors` — emits the conformance vectors
 conformance/                      golden vectors + Node harness that hold web/ at parity in CI
@@ -70,7 +74,7 @@ Apple-framework dependencies, so its full test suite runs on Linux CI.
 
 ## Web app & parity
 
-The same tool ships as a static, offline-capable PWA at **ignition.badwater.guide**
+The same tool ships as a static, offline-capable PWA at **ignition.plateworks.org**
 (`web/`, deployed via Netlify). Its calculation engine (`web/engine.js`) is a
 JavaScript twin of `PlateworksCore`, and parity is **enforced, not promised**:
 golden vectors generated from the Swift core (`swift run plateworks-vectors`) are
@@ -87,15 +91,20 @@ checks. Design and contributor rules: [`docs/PARITY.md`](docs/PARITY.md).
 swift test
 ```
 
-**App (macOS + Xcode 15+):**
+**App (macOS + Xcode 26 — the version CI is pinned to; Swift 6 language mode
+rules out anything before Xcode 16):**
 ```sh
-brew install xcodegen        # once
+brew install xcodegen        # once — XcodeGen 2.38+ (project.yml uses supportedDestinations)
 xcodegen generate            # produces PlateworksIgnition.xcodeproj from project.yml
 open PlateworksIgnition.xcodeproj
 ```
-No XcodeGen? Create a new multiplatform SwiftUI App in Xcode, add the
-`App/PlateworksIgnition` sources and the `Assets.xcassets`, and add `PlateworksCore`
-as a local package dependency.
+`PlateworksIgnition.xcodeproj` is **generated, not committed** — if the build
+misbehaves, regenerate it before debugging anything else, and never edit build
+settings in Xcode's UI (the next `xcodegen generate` discards them). Building
+the app scheme also compiles the embedded widget and watch app, so Xcode needs
+the **iOS and watchOS platforms installed** (Xcode → Settings → Components).
+First time here? Follow [`docs/RUNNING_LOCALLY.md`](docs/RUNNING_LOCALLY.md) —
+a verified step-by-step, including the signing and App Group traps.
 
 The color palette is generated:
 ```sh

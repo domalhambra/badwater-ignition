@@ -89,6 +89,11 @@ function psychro(dryF,wetF,pInHg){
   let vp=esW-k*P*(tD-tW); if(vp<0.01)vp=0.01;
   const rh=Math.max(0,Math.min(100,100*vp/esD));
   const ratio=Math.log(vp/6.112); const dewC=(243.5*ratio)/(17.67-ratio);
+  // Math.round rounds an exact negative .5 toward +∞; Swift's .rounded() goes
+  // away from zero. No integer input in the reachable grid (dry 10–130, wet ≤
+  // dry, all six bands) lands on an exact half, so the twins agree everywhere
+  // today — but if this formula ever changes, re-sweep for half-values before
+  // trusting Math.round again.
   return {rh:Math.round(rh),dew:Math.round(c2f(dewC)),dep:Math.round(dryF-wet)};
 }
 // `l` = contiguous-U.S. elevation range, `al` = the shifted Alaska range —
@@ -167,20 +172,31 @@ function crc32(bytes){ let c=0xFFFFFFFF; for(let i=0;i<bytes.length;i++){ c=CRC_
 function le16(v){ return [v&0xFF,(v>>>8)&0xFF]; }
 function le32(v){ return [v&0xFF,(v>>>8)&0xFF,(v>>>16)&0xFF,(v>>>24)&0xFF]; }
 function zipStore(entries){
-  const enc=new TextEncoder(); const out=[]; const central=[]; const dosTime=0,dosDate=0x21;
+  // Byte-identical output to the old spread-based assembly, copied with
+  // Uint8Array.set instead: spreading a whole entry into push(...) passes one
+  // argument per byte, and past the engine's argument ceiling (~126 KB of
+  // sheet XML in one entry) that threw "Maximum call stack size exceeded".
+  const enc=new TextEncoder(); const dosTime=0,dosDate=0x21;
+  const local=[], central=[]; let offset=0;
   for(const e of entries){
-    const name=Array.from(enc.encode(e.path)); const bytes=Array.from(e.bytes);
-    const crc=crc32(e.bytes); const size=bytes.length; const offset=out.length;
-    out.push(...le32(0x04034b50),...le16(20),...le16(0),...le16(0),...le16(dosTime),...le16(dosDate),
-      ...le32(crc),...le32(size),...le32(size),...le16(name.length),...le16(0),...name,...bytes);
-    central.push(...le32(0x02014b50),...le16(20),...le16(20),...le16(0),...le16(0),...le16(dosTime),...le16(dosDate),
+    const name=enc.encode(e.path);
+    const bytes=e.bytes instanceof Uint8Array?e.bytes:Uint8Array.from(e.bytes);
+    const crc=crc32(bytes); const size=bytes.length;
+    local.push(Uint8Array.from([...le32(0x04034b50),...le16(20),...le16(0),...le16(0),...le16(dosTime),...le16(dosDate),
+      ...le32(crc),...le32(size),...le32(size),...le16(name.length),...le16(0)]), name, bytes);
+    central.push(Uint8Array.from([...le32(0x02014b50),...le16(20),...le16(20),...le16(0),...le16(0),...le16(dosTime),...le16(dosDate),
       ...le32(crc),...le32(size),...le32(size),...le16(name.length),...le16(0),...le16(0),...le16(0),...le16(0),
-      ...le32(0),...le32(offset),...name);
+      ...le32(0),...le32(offset)]), name);
+    offset+=30+name.length+size;      // 30-byte local header + name + data
   }
-  const cdOffset=out.length,cdSize=central.length;
-  const eocd=[...le32(0x06054b50),...le16(0),...le16(0),...le16(entries.length),...le16(entries.length),
-    ...le32(cdSize),...le32(cdOffset),...le16(0)];
-  return new Uint8Array([...out,...central,...eocd]);
+  let cdSize=0; for(const c of central)cdSize+=c.length;
+  const eocd=Uint8Array.from([...le32(0x06054b50),...le16(0),...le16(0),...le16(entries.length),...le16(entries.length),
+    ...le32(cdSize),...le32(offset),...le16(0)]);
+  const parts=local.concat(central,[eocd]);
+  let total=0; for(const p of parts)total+=p.length;
+  const out=new Uint8Array(total); let pos=0;
+  for(const p of parts){ out.set(p,pos); pos+=p.length; }
+  return out;
 }
 // shifts: [{obs,division,locationName,dateMs}] — the retained days, oldest data
 // first is not required (sorted here); the LAST entry must be the current shift

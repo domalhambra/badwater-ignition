@@ -1,4 +1,4 @@
-# Web parity agent — keeps ignition.badwater.guide at feature parity with the iOS app.
+# Web parity agent — keeps ignition.plateworks.org at feature parity with the iOS app.
 #
 # When a push to main touches the Swift side (Sources/ or App/) without touching
 # web/, this workflow runs Claude Code to port the change to the web app and
@@ -36,7 +36,12 @@ permissions:
 
 jobs:
   port:
-    if: github.repository == 'domalhambra/badwater-ignition'
+    # github.repository reflects the repo's CURRENT name. The rename
+    # badwater-ignition -> plateworks-ignition left this guard stale, which
+    # would have silently skipped the port job on every push from then on — a
+    # fork guard quietly disabling the automation it protects, with each run
+    # still reporting success. Keep it in sync with any future rename.
+    if: github.repository == 'domalhambra/plateworks-ignition'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -86,7 +91,7 @@ jobs:
           prompt: |
             You are the web-parity agent for this repository. The iOS app
             (SwiftUI over Sources/PlateworksCore) is the source of truth; the
-            static PWA in web/ (deployed to ignition.badwater.guide via Netlify)
+            static PWA in web/ (deployed to ignition.plateworks.org via Netlify)
             must stay at feature parity. Read docs/PARITY.md first.
 
             A push to main just changed the Swift side without touching web/.
@@ -111,8 +116,9 @@ jobs:
                  vanilla-JS render style. Match the iOS feature's behavior,
                  not necessarily its pixels.
                - ALWAYS bump the CACHE version string in web/sw.js
-                 (badwater-obs-vN -> vN+1) — the PWA is offline-first and a
-                 stale cache means crews in the field run the old app.
+                 (badwater-ignition-vN -> vN+1; bump the number, never reword
+                 the prefix) — the PWA is offline-first and a stale cache
+                 means crews in the field run the old app.
             4. Gate your work: `node conformance/check-web.js` must pass, and
                `node --check web/engine.js web/app.js` must parse. Iterate
                until green. Never edit conformance/vectors.json (it is

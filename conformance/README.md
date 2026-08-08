@@ -2,7 +2,7 @@
 
 `vectors.json` is generated from **`Sources/PlateworksCore`** (the source of
 truth) and replayed against **`web/engine.js`** (the JavaScript port that
-powers ignition.badwater.guide). CI fails whenever the two implementations disagree,
+powers ignition.plateworks.org). CI fails whenever the two implementations disagree,
 so parity is enforced by the build, not by diligence. Full design:
 [`docs/PARITY.md`](../docs/PARITY.md).
 
